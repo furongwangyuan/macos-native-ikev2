@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+  <title>家庭 VPN · 私有监控</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <main class="dashboard">
+    <header class="page-header">
+      <div class="title-block">
+        <div class="eyebrow"><span class="brand-mark" aria-hidden="true">⌂</span> 家庭网络 <span class="local-badge">仅本人可见</span></div>
+        <h1>家庭 VPN</h1>
+        <p class="subtitle">家人的连接状态，一眼就能看到。</p>
+      </div>
+      <div class="header-status">
+        <span id="server-state" class="status-pill neutral"><span class="status-dot"></span>服务状态未知</span>
+        <span id="last-update" class="update-time">等待同步数据</span>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="网络概况">
+      <article class="metric-card"><div class="metric-label"><span class="metric-icon devices-icon" aria-hidden="true">▣</span>已连接设备</div><div class="metric-value"><span id="online-value">—</span><span class="unit">台</span></div><p id="online-detail" class="metric-detail">等待连接状态</p></article>
+      <article class="metric-card"><div class="metric-label"><span class="metric-icon download-icon" aria-hidden="true">↓</span>下载速度</div><div class="metric-value"><span id="download-value">—</span><span id="download-unit" class="unit">Mbps</span></div><p class="metric-detail">家庭宽带 → 家人的设备</p></article>
+      <article class="metric-card"><div class="metric-label"><span class="metric-icon upload-icon" aria-hidden="true">↑</span>上传速度</div><div class="metric-value"><span id="upload-value">—</span><span id="upload-unit" class="unit">Mbps</span></div><p class="metric-detail">家人的设备 → 家庭宽带</p></article>
+      <article class="metric-card total-card"><div class="metric-label"><span class="metric-icon total-icon" aria-hidden="true">⇄</span><span id="total-label">今日累计流量</span></div><div class="metric-value"><span id="total-value">—</span><span id="total-unit" class="unit">GB</span></div><p id="total-detail" class="metric-detail">尚无有效的当日采样</p></article>
+    </section>
+
+    <section class="chart-panel" aria-labelledby="chart-title">
+      <div class="panel-header chart-heading"><div><h2 id="chart-title">近 24 小时流量走势</h2><p id="chart-period">每 30 分钟用量 · 上传 + 下载</p></div><span id="chart-status" class="chart-status">正在读取历史</span></div>
+      <div class="chart-filters" role="group" aria-label="选择曲线设备">
+        <button id="chart-all" class="chart-all" type="button" aria-pressed="true">全部设备</button>
+        <div id="chart-devices" class="chart-devices" role="group" aria-label="单独查看设备，可多选"></div>
+      </div>
+      <div class="chart-canvas">
+        <svg id="chart-svg" viewBox="0 0 1000 300" role="img" aria-labelledby="usage-chart-title usage-chart-description" hidden></svg>
+        <div id="chart-empty" class="chart-empty"><h3 id="chart-empty-title">尚无可绘制的记录</h3><p id="chart-empty-detail">曲线从开始记录后显示；此前的数据和未知用量不会补成零。</p></div>
+      </div>
+      <ul id="chart-legend" class="chart-legend" aria-label="曲线及最近时段用量"></ul>
+      <p id="chart-summary" class="sr-only"></p>
+      <p class="chart-note">按马来西亚时间展示；未结束或采样不完整的时段显示已记录用量，没有记录的时段留空。</p>
+    </section>
+
+    <section class="devices-panel" aria-labelledby="devices-title">
+      <div class="panel-header"><div><h2 id="devices-title">家庭设备</h2><p id="devices-description">只显示已登记的设备，不展示访问内容。</p></div><span id="device-count" class="count-badge">等待数据</span></div>
+      <div class="table-wrap"><table id="device-table" hidden><thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">已连接</th><th scope="col">下载 / 上传</th><th id="usage-column" scope="col">今日流量</th></tr></thead><tbody id="device-rows"></tbody></table></div>
+      <div id="empty-state" class="empty-state"><div class="empty-glyph" aria-hidden="true"><span></span><span></span></div><h3 id="empty-title">等待设备数据</h3><p id="empty-detail">接入私有监控后，已登记的家庭设备会显示在这里。</p></div>
+    </section>
+
+    <footer class="page-footer"><p><span class="privacy-dot" aria-hidden="true"></span>仅本人登录可见 · 只同步状态、速度和今日用量</p><p id="coverage-note">数据来源：VPN 隧道计数 · 统计日期待确认</p></footer>
+    <p id="coverage-sampling" class="coverage-limitation">今日尚无有效采样</p>
+    <p id="coverage-limitation" class="coverage-limitation">只显示马来西亚时间当日已采样的小计；采样缺口不会估填，也不代表宽带计费流量。</p>
+  </main>
+</body>
+</html>

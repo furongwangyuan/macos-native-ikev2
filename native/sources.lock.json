@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "file": "strongswan-6.1.0.tar.bz2",
+      "url": "https://download.strongswan.org/strongswan-6.1.0.tar.bz2",
+      "sha256": "fe6c97481298767213cfc2e9a1da29fdd8018d481ff4cb9cf0283099654f20d4",
+      "license": "GPL-2.0-or-later; retain per-file notices"
+    },
+    {
+      "file": "openssl-3.5.9.tar.gz",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+      "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+      "license": "Apache-2.0"
+    },
+    {
+      "file": "pkgconf-3.0.10.tar.xz",
+      "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.10.tar.xz",
+      "sha256": "9371b2f6372da574d4c6dc96fe9b1463037bcf6afcb6671c1555afde7b17e2de",
+      "license": "See licenses/pkgconf-COPYING.txt"
+    }
+  ]
+}

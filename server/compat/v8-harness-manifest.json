@@ -1,0 +1,15 @@
+{
+  "closed_checkpoint.py": "07c296ebaca021b30501d22196116b58091066e917f95c407834d66725241b35",
+  "coordinator_entry.py": "21d64bfe987485dadd6f4d1a6e135f25656b92a3fa45d277feace7b6fc41bb3b",
+  "coordinator_logic.py": "77a6c7c74316693b396bccde9c7a56b2b28c2ceea1ce7d12f464665d72a75777",
+  "fault_protocol.py": "3253ec5901085789c3eb2489eab71fcc667859940257ad7d0ebfc80112b8030c",
+  "fixed_entries.py": "69e568c8f4b673e156d3fc633371d43694955b42eaf5ec13a7c8c5e282ca5760",
+  "integration_readonly.py": "7b28d21b427a23e77ac7fbac0ffd6c84c94a7f4af119d14f4ad894d433a613fe",
+  "native_adapter.py": "52844ee77449da5d98bbd78b8459492f856fd32591ca339f62d7106133d9973e",
+  "observer_entry.py": "642146f910f122cd31732202971848160ebd334d84d2f051d4e3ba38028d71fd",
+  "owner_entry.py": "bdc8a2f377a15f4f6979e14061e8ec3d5cc93289980ce2a9aab0e8b7777c9955",
+  "parent-closure.json": "c8d8d213059199c16bcb03e7b8867f71a886de2661e2ceda8c35a818fca1d298",
+  "process_observe.py": "9a9bd89a2a30548cbd6f891bb41c7444758cb8a87b66a09468b04369d3df3d2a",
+  "receipt_store.py": "f8e3413f0324b39f973cc498f0fbca4c62803969f78529d307a9ca4630feb86b",
+  "role_logic.py": "0fe779b602340b3643f81b50eec7b1a2961528b09a9f8a47379be0d768ee5d20"
+}

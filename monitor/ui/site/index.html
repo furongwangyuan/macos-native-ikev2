@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+  <title>家庭 VPN · 本机监控</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <main class="dashboard">
+    <header class="page-header">
+      <div class="title-block">
+        <div class="eyebrow"><span class="brand-mark" aria-hidden="true">⌂</span> 家庭网络 <span class="local-badge">仅此 Mac</span></div>
+        <h1>家庭 VPN</h1>
+        <p class="subtitle">家人的连接状态，一眼就能看到。</p>
+      </div>
+      <div class="header-status">
+        <span id="server-state" class="status-pill neutral"><span class="status-dot"></span>服务状态未知</span>
+        <span id="last-update" class="update-time">等待本机数据</span>
+      </div>
+    </header>
+
+    <section id="notice" class="notice" aria-live="polite" aria-atomic="true">
+      <div class="notice-icon" aria-hidden="true">i</div>
+      <div><strong id="notice-title">正在读取本机状态</strong><p id="notice-detail">连接到监控服务后，这里会显示实际设备和流量。</p></div>
+      <button id="refresh" class="refresh-button" type="button">刷新数据 <span aria-hidden="true">↻</span></button>
+    </section>
+
+    <section class="metrics" aria-label="网络概况">
+      <article class="metric-card"><div class="metric-label"><span class="metric-icon devices-icon" aria-hidden="true">▣</span>已连接设备</div><div class="metric-value"><span id="online-value">—</span><span class="unit">台</span></div><p id="online-detail" class="metric-detail">等待连接状态</p></article>
+      <article class="metric-card"><div class="metric-label"><span class="metric-icon download-icon" aria-hidden="true">↓</span>下载速度</div><div class="metric-value"><span id="download-value">—</span><span id="download-unit" class="unit">Mbps</span></div><p class="metric-detail">家庭宽带 → 家人的设备</p></article>
+      <article class="metric-card"><div class="metric-label"><span class="metric-icon upload-icon" aria-hidden="true">↑</span>上传速度</div><div class="metric-value"><span id="upload-value">—</span><span id="upload-unit" class="unit">Mbps</span></div><p class="metric-detail">家人的设备 → 家庭宽带</p></article>
+      <article class="metric-card total-card"><div class="metric-label"><span class="metric-icon total-icon" aria-hidden="true">⇄</span><span id="total-label">今日累计流量</span></div><div class="metric-value"><span id="total-value">—</span><span id="total-unit" class="unit">GB</span></div><p id="total-detail" class="metric-detail">尚无有效的当日采样</p></article>
+    </section>
+
+    <section class="devices-panel" aria-labelledby="devices-title">
+      <div class="panel-header"><div><h2 id="devices-title">家庭设备</h2><p id="devices-description">只显示已登记的设备，不展示访问内容。</p></div><span id="device-count" class="count-badge">等待数据</span></div>
+      <div class="table-wrap"><table id="device-table" hidden><thead><tr><th scope="col">设备</th><th scope="col">状态</th><th scope="col">已连接</th><th scope="col">下载 / 上传</th><th id="usage-column" scope="col">今日流量</th></tr></thead><tbody id="device-rows"></tbody></table></div>
+      <div id="empty-state" class="empty-state"><div class="empty-glyph" aria-hidden="true"><span></span><span></span></div><h3 id="empty-title">等待设备数据</h3><p id="empty-detail">接入本机监控后，已登记的家庭设备会显示在这里。</p></div>
+    </section>
+
+    <footer class="page-footer"><p><span class="privacy-dot" aria-hidden="true"></span>仅本机查看 · 只显示设备状态与流量</p><p id="coverage-note">数据来源：VPN 隧道计数 · 统计日期待确认</p></footer>
+    <p id="coverage-sampling" class="coverage-limitation">今日尚无有效采样</p>
+    <p id="coverage-limitation" class="coverage-limitation">只显示马来西亚时间当日已采样的小计；采样缺口不会估填，也不代表宽带计费流量。</p>
+  </main>
+</body>
+</html>

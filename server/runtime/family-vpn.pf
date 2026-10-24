@@ -1,0 +1,59 @@
+# CANDIDATE: validate with real IPsec traffic before production acceptance.
+# Loaded only into the dedicated org.familyvpn anchor.
+# IPv4 outer IKE/NAT-T; IPv4 + IPv6 inner traffic. No DNS server is opened.
+wan = "en0"
+table <familyvpn_v4> const { 10.77.26.0/24 }
+table <familyvpn_v6> const { fd6d:fe83:ab27:2600::/64 }
+table <familyvpn_home4> persist { 203.0.113.8 }
+table <familyvpn_noninternet4> const { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.168.0.0/16, 198.18.0.0/15, 224.0.0.0/4, 240.0.0.0/4 }
+table <familyvpn_noninternet6> const { ::/128, ::1/128, fc00::/7, fe80::/10, ff00::/8, 2001:db8::/32 }
+
+# Avoid translating forbidden destinations before filter rules see them.
+no nat on $wan inet from <familyvpn_v4> to self
+no nat on $wan inet6 from <familyvpn_v6> to self
+no nat on $wan inet from <familyvpn_v4> to <familyvpn_home4>
+no nat on $wan inet6 from <familyvpn_v6> to ($wan:network)
+no nat on $wan inet6 from <familyvpn_v6> to (en1:network)
+nat on $wan inet from <familyvpn_v4> to ! <familyvpn_noninternet4> tag FAMILYVPN_EGRESS4 -> ($wan:0)
+nat on $wan inet6 from <familyvpn_v6> to ! <familyvpn_noninternet6> tag FAMILYVPN_EGRESS6 -> ($wan:0)
+
+# These blocks apply before the no-state inner ingress and NAT egress passes.
+# They block, rather than create direct-connect exceptions on the iPhone.
+block drop quick inet from <familyvpn_v4> to self label "familyvpn_no_host4"
+block drop quick inet6 from <familyvpn_v6> to self label "familyvpn_no_host6"
+block drop quick inet from <familyvpn_v4> to <familyvpn_noninternet4> label "familyvpn_no_lan4"
+block drop quick inet from <familyvpn_v4> to <familyvpn_home4> label "familyvpn_no_hairpin4"
+block drop quick inet6 from <familyvpn_v6> to <familyvpn_noninternet6> label "familyvpn_no_lan6"
+block drop quick inet6 from <familyvpn_v6> to ($wan:network) label "familyvpn_no_prefix6"
+block drop quick inet6 from <familyvpn_v6> to (en1:network) label "familyvpn_no_wifi6"
+
+# Replaced only after authenticated CHILD, exact VIP and OUT SPD validation.
+# IPv4 reverse NAT reaches outbound PF before IPsec encryption on macOS.
+# ACTIVE_IPV4_RETURN_RULE
+
+# NAT has already rewritten the source here. Match its tag, not the ULA/RFC1918 source.
+block drop quick to self tagged FAMILYVPN_EGRESS4
+block drop quick to self tagged FAMILYVPN_EGRESS6
+block drop quick inet to <familyvpn_noninternet4> tagged FAMILYVPN_EGRESS4
+block drop quick inet to <familyvpn_home4> tagged FAMILYVPN_EGRESS4
+block drop quick inet6 to <familyvpn_noninternet6> tagged FAMILYVPN_EGRESS6
+block drop quick inet6 to ($wan:network) tagged FAMILYVPN_EGRESS6
+block drop quick inet6 to (en1:network) tagged FAMILYVPN_EGRESS6
+
+# Do not create floating states before egress: route changes must not move VPN
+# cleartext onto Wi-Fi/another interface via an ingress-created state.
+pass in quick on $wan inet from <familyvpn_v4> to any no state label "familyvpn_inner4"
+pass in quick on $wan inet6 from <familyvpn_v6> to any no state label "familyvpn_inner6"
+pass out quick on $wan inet tagged FAMILYVPN_EGRESS4 keep state (if-bound) label "familyvpn_egress4"
+pass out quick on $wan inet6 tagged FAMILYVPN_EGRESS6 keep state (if-bound) label "familyvpn_egress6"
+
+# No un-NATed VPN traffic may leave any interface. State return traffic is handled
+# by the egress state; essential ICMP/ICMPv6 errors are expected to match states.
+block drop quick inet from <familyvpn_v4> to any label "familyvpn_untranslated4"
+block drop quick inet6 from <familyvpn_v6> to any label "familyvpn_untranslated6"
+block drop quick tagged FAMILYVPN_EGRESS4
+block drop quick tagged FAMILYVPN_EGRESS6
+
+# IKE/NAT-T only on the intended Ethernet interface; return state is if-bound.
+pass in quick on $wan inet proto udp to ($wan) port { 500, 4500 } keep state (if-bound) label "familyvpn_ike"
+# Other Mac traffic, RA, NDP and ICMP are left to the existing system rules.

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "revision": 1,
+  "usage_timezone": "Asia/Kuala_Lumpur",
+  "devices": [
+    {
+      "device_id": "device01",
+      "display_name": "家庭 iPhone",
+      "ike_identity": "device01.family.home.arpa",
+      "state": "enabled",
+      "vip4": "10.77.26.10",
+      "vip6": "fd6d:fe83:ab27:2600::10"
+    }
+  ]
+}

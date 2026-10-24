@@ -1,0 +1,15 @@
+{
+  "purpose": "Historical guard documentation only; not local deployment approval.",
+  "parents": {
+    "v8": {
+      "sha256": "31c50e9feb8cec31d4799eafd2bb14f32a1c89d7a8b992f0064717ba0312c92c",
+      "required_for_historical_deployment": true,
+      "provided_as_executable": false
+    },
+    "v9_installer": {
+      "sha256": "7e0e408a5f80163d992ad80afa2824b4758be47ed7a802b29cc3cf2071eef276",
+      "required_for_historical_deployment": true,
+      "provided_as_executable": false
+    }
+  }
+}

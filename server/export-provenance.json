@@ -1,0 +1,472 @@
+{
+  "export": "source-reference",
+  "original_common_manifest_sha256": "d85566bf5abc7b9ce9abe30d9d1c5abbee28291cc66cf0441cc68c26304b35de",
+  "personal_deployment_bindings_removed": true,
+  "runtime_behavior_changes": "Example addresses and identities only; original lifecycle checks retained.",
+  "source_files": {
+    "server/control-data/admission.py": {
+      "source_component": "control-data",
+      "source_sha256": "00604888445059aa440377ca1d6225576b5176338baade023beb9849bbdeb4fd"
+    },
+    "server/control-data/batch.py": {
+      "source_component": "control-data",
+      "source_sha256": "008d6d2e186f709ee0b17d7b6dfe0bb95571a63e562dddbc01f6574c77200bf2"
+    },
+    "server/control-data/diagnostics.py": {
+      "source_component": "control-data",
+      "source_sha256": "610a2f3c38eaf59aca89f997ed5c485a10fdfd83e8472576fa69713ad5a31e6a"
+    },
+    "server/control-data/entry-template.py": {
+      "source_component": "control-data",
+      "source_sha256": "fdca93d9977e4834ea81a42bf52fa18ea4d7d750a59bba8a089439f1fdaf9916"
+    },
+    "server/control-data/finite_service.py": {
+      "source_component": "control-data",
+      "source_sha256": "8e81d9733cc077595f1b446a93f80724ed55f30ecf4dd8245fb76add612d65ad"
+    },
+    "server/control-data/handoff.py": {
+      "source_component": "control-data",
+      "source_sha256": "55d52a276db764222905e2b225786a8295aec2824d5a8e25a880aee631abd31f"
+    },
+    "server/control-data/install_io.py": {
+      "source_component": "control-data",
+      "source_sha256": "9e032b6520d4806f7c0a99535754c3d80c499a7a8b367ee3eaf799ec638947b9"
+    },
+    "server/control-data/installation.py": {
+      "source_component": "control-data",
+      "source_sha256": "129a55d93081587e028a4249781951dc316e0caae7038202872a77115860b4d7"
+    },
+    "server/control-data/trial_install.py": {
+      "source_component": "control-data",
+      "source_sha256": "59adbd84a18deaed85ecfc9d90ba4933397613362fb88ec942642c27a89d21b2"
+    },
+    "server/control/activation_install.py": {
+      "source_component": "control",
+      "source_sha256": "82d583b2525d1ce781db08a4b2077393618608013d3fffb7ab1a2b03f66121af"
+    },
+    "server/control/device_control.py": {
+      "source_component": "control",
+      "source_sha256": "bf117edaf70660d63f8aec341afe2fb5c43bbb40fe031d6b0e4a1a5f886ead83"
+    },
+    "server/control/device_delivery.py": {
+      "source_component": "control",
+      "source_sha256": "fe988e922eb428cb8163fe771d9304f6c4802e8ff6676249b3e2ca032f260d27"
+    },
+    "server/control/device_password.py": {
+      "source_component": "control",
+      "source_sha256": "0c663696186340e0d3de10ad4fc36f4388dfddae71a2e77da3492050098a378e"
+    },
+    "server/control/pki_registry_setup.py": {
+      "source_component": "control",
+      "source_sha256": "de5a0146539e2f63ac099cf468dfc1c722c77036f750187a8dededefc8852ac6"
+    },
+    "server/control/production_service.py": {
+      "source_component": "control",
+      "source_sha256": "1f0bad4d30eee4a574155f832831b7a48e627daa51e73d5554009bad823400a0"
+    },
+    "server/control/production_service_job.py": {
+      "source_component": "control",
+      "source_sha256": "146cd682d0897bd5dc4132bd553ad9673ecef7002c681cf57ac916c107701d5f"
+    },
+    "server/harness/closed_checkpoint.py": {
+      "source_component": "harness",
+      "source_sha256": "07c296ebaca021b30501d22196116b58091066e917f95c407834d66725241b35"
+    },
+    "server/harness/coordinator_entry.py": {
+      "source_component": "harness",
+      "source_sha256": "21d64bfe987485dadd6f4d1a6e135f25656b92a3fa45d277feace7b6fc41bb3b"
+    },
+    "server/harness/coordinator_logic.py": {
+      "source_component": "harness",
+      "source_sha256": "77a6c7c74316693b396bccde9c7a56b2b28c2ceea1ce7d12f464665d72a75777"
+    },
+    "server/harness/fault_protocol.py": {
+      "source_component": "harness",
+      "source_sha256": "3253ec5901085789c3eb2489eab71fcc667859940257ad7d0ebfc80112b8030c"
+    },
+    "server/harness/fixed_entries.py": {
+      "source_component": "harness",
+      "source_sha256": "69e568c8f4b673e156d3fc633371d43694955b42eaf5ec13a7c8c5e282ca5760"
+    },
+    "server/harness/integration_readonly.py": {
+      "source_component": "harness",
+      "source_sha256": "7b28d21b427a23e77ac7fbac0ffd6c84c94a7f4af119d14f4ad894d433a613fe"
+    },
+    "server/harness/native_adapter.py": {
+      "source_component": "harness",
+      "source_sha256": "563a1e375d49f72836e174fc28dcbf6aa120946b4daff1fcf7b91a1f2fb63f13"
+    },
+    "server/harness/observer_entry.py": {
+      "source_component": "harness",
+      "source_sha256": "642146f910f122cd31732202971848160ebd334d84d2f051d4e3ba38028d71fd"
+    },
+    "server/harness/owner_entry.py": {
+      "source_component": "harness",
+      "source_sha256": "bdc8a2f377a15f4f6979e14061e8ec3d5cc93289980ce2a9aab0e8b7777c9955"
+    },
+    "server/harness/process_observe.py": {
+      "source_component": "harness",
+      "source_sha256": "9a9bd89a2a30548cbd6f891bb41c7444758cb8a87b66a09468b04369d3df3d2a"
+    },
+    "server/harness/receipt_store.py": {
+      "source_component": "harness",
+      "source_sha256": "f8e3413f0324b39f973cc498f0fbca4c62803969f78529d307a9ca4630feb86b"
+    },
+    "server/harness/role_logic.py": {
+      "source_component": "harness",
+      "source_sha256": "0fe779b602340b3643f81b50eec7b1a2961528b09a9f8a47379be0d768ee5d20"
+    },
+    "server/release/arguments-template.py": {
+      "source_component": "release",
+      "source_sha256": "bffc27b9ababcb6ca7338ab4c0c241a04be59f5e73377c62da31d4416f1985b3"
+    },
+    "server/release/assets-template.py": {
+      "source_component": "release",
+      "source_sha256": "0e6b9143e6f97a56d952912384ec6d22cf958325c1c2a8e48f4fd7aa081d0bc1"
+    },
+    "server/release/bootstrap-template.py": {
+      "source_component": "release",
+      "source_sha256": "aa233be981023fe585b2c7b2d7cf08fc482d8374a429ccf245fa0092ab5a5cae"
+    },
+    "server/release/device-client.py": {
+      "source_component": "release",
+      "source_sha256": "aa28af46359c2b2526a6bc19caf14b8c398392516b0dde7b95d5dd91fe183503"
+    },
+    "server/release/root-template.py": {
+      "source_component": "release",
+      "source_sha256": "f5f22ab4d01e0008cf5fdbdb26a9af62691571fb4474eb9c19586208446790a4"
+    },
+    "server/runtime/alf_readonly.py": {
+      "source_component": "runtime",
+      "source_sha256": "18baee9a650624b1f786f1f753c8ae541449d708b60f7e2e53f3fc641409cd48"
+    },
+    "server/runtime/alf_transaction.py": {
+      "source_component": "runtime",
+      "source_sha256": "e0eda27753a46020f60bcbca5ebb99f3fcb523722cd93e134b9650982442710a"
+    },
+    "server/runtime/boot_finite_source.py": {
+      "source_component": "runtime",
+      "source_sha256": "210c620d05bca3258a34adaa0f8a6046975c6d203e2f1d8a9b92bd5099bbb8fb"
+    },
+    "server/runtime/boot_handoff.py": {
+      "source_component": "runtime",
+      "source_sha256": "f98772843b791eda282daa69de95afab11ab5bf0c4986b7a042c2be6544f2e0f"
+    },
+    "server/runtime/boot_mutation_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "955f79c6fb83ab2c824ad38d2d441f651ecc05214bad08e6bda757360a60faea"
+    },
+    "server/runtime/boot_native.py": {
+      "source_component": "runtime",
+      "source_sha256": "e82581d20128cabb626bc35e1d46659b6deae83564117eb29365744705c6b0c1"
+    },
+    "server/runtime/boot_reconcile.py": {
+      "source_component": "runtime",
+      "source_sha256": "c99ea3d88083a5ad15766bbc9d431e16b50e8213ce7798e308f52dd32a37bf66"
+    },
+    "server/runtime/boot_record.py": {
+      "source_component": "runtime",
+      "source_sha256": "a1293236a8a5ed25d74f458465e149c9879896c2b79eeca92346590a736d5e06"
+    },
+    "server/runtime/boot_server_source.py": {
+      "source_component": "runtime",
+      "source_sha256": "a156d821d0a6b818daa5164437567997a13c0d716094e4a9448969d47f63bd6a"
+    },
+    "server/runtime/boot_source.py": {
+      "source_component": "runtime",
+      "source_sha256": "355560c6b96fbbb4b4c46ebf1f532a3c191d59e1ff818109ceedbb7236cc1b78"
+    },
+    "server/runtime/boot_store.py": {
+      "source_component": "runtime",
+      "source_sha256": "2099ba875d2ab5794fa85631dd5879937fb75c1b4e60ebde5de63fe6666e47c9"
+    },
+    "server/runtime/boot_writer.py": {
+      "source_component": "runtime",
+      "source_sha256": "52d11ddc8eb1a8f9d71713988582e3d513cfa209e582f2f287df10a301f88973"
+    },
+    "server/runtime/config.json": {
+      "source_component": "runtime",
+      "source_sha256": "19c772e7847e4ec64c00ef64b069474347df133eb7a2652e961d9c10d01d7e60"
+    },
+    "server/runtime/continuous_clock.py": {
+      "source_component": "runtime",
+      "source_sha256": "8629bb8aacf085e624b9f224960026a69c89b7785ec5fcf58a00901514d622e9"
+    },
+    "server/runtime/controller.py": {
+      "source_component": "runtime",
+      "source_sha256": "b979fa27c47a26832923532064371be7d3579c1d2c1905afe8fa32c25965e948"
+    },
+    "server/runtime/crl_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "2abff7776e8e2cee08a25992cf2ea730ef28fb679673f7e0b3416e9e71ad45ad"
+    },
+    "server/runtime/crypto/public_crl.py": {
+      "source_component": "runtime",
+      "source_sha256": "b6312b2bdd93ec7ff5daca2e949239b6f198f7abbeef3b3b9721cbfffe1adf7f"
+    },
+    "server/runtime/crypto/public_crl_verify.c": {
+      "source_component": "runtime",
+      "source_sha256": "5b45a7913cc8dc661db87118bf186dfae86d7b88b24c03c1464cccb036114774"
+    },
+    "server/runtime/current_crl.py": {
+      "source_component": "runtime",
+      "source_sha256": "ec951e552a27125d28d9c4c38607cbcef39cb20066f3edcaf2bd6584658cd75b"
+    },
+    "server/runtime/enrollment.py": {
+      "source_component": "runtime",
+      "source_sha256": "26c8109ed91bcee5aedb72d0a4f3aabc180526f1f693819a2b6e1cd08891faf6"
+    },
+    "server/runtime/family-vpn.fleet.pf": {
+      "source_component": "runtime",
+      "source_sha256": "d5d1ab3c8a03a5ebfe8eec9fb84177dd4dff6c146f79a12b0f57266015efd18a"
+    },
+    "server/runtime/family-vpn.pf": {
+      "source_component": "runtime",
+      "source_sha256": "d5d1ab3c8a03a5ebfe8eec9fb84177dd4dff6c146f79a12b0f57266015efd18a"
+    },
+    "server/runtime/fleet_controller.py": {
+      "source_component": "runtime",
+      "source_sha256": "1bf651fcc62f956d88eec154830aa4ef1daf571d8acc5d1b7bc09a62e44d305d"
+    },
+    "server/runtime/fleet_coordinator.py": {
+      "source_component": "runtime",
+      "source_sha256": "1724ebbddc2a7fe51b036d771ce52033e10302a3958eb0fc92110b50ad707aa8"
+    },
+    "server/runtime/fleet_exchange.py": {
+      "source_component": "runtime",
+      "source_sha256": "71c5997f4485420f55e099f7652fc823f46d9604d41984ac26497a1fbfc8bad8"
+    },
+    "server/runtime/fleet_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "f6d34cc1c9f38b971bbf54b539eb5c7b7fb48f6ef00d4e6f241369ff9fa71096"
+    },
+    "server/runtime/fleet_native.py": {
+      "source_component": "runtime",
+      "source_sha256": "69a7302488050c7f6c8be0ff75354d522b857cb404eefe588f0ab46c2594e0b5"
+    },
+    "server/runtime/fleet_policy.py": {
+      "source_component": "runtime",
+      "source_sha256": "d689e19f0c72dd1878b3c4b2a314cf08915901270253317bfbf1235e4b491139"
+    },
+    "server/runtime/fleet_session.py": {
+      "source_component": "runtime",
+      "source_sha256": "6c2ce277c83c881c35305a700cb6154d4c5d473db1564f92c4dc766a43abbab4"
+    },
+    "server/runtime/fleet_tables.py": {
+      "source_component": "runtime",
+      "source_sha256": "fa400a54f0b7d17b1039a85dd8f58f295c77019ea0d2a68707cfadc60a0ffbd3"
+    },
+    "server/runtime/fleet_transport.py": {
+      "source_component": "runtime",
+      "source_sha256": "c810bd2a3e7fc2ad6a1cf59eed0def4ebf66f944e1d831fe7e5050915531264a"
+    },
+    "server/runtime/fleet_vici.py": {
+      "source_component": "runtime",
+      "source_sha256": "e1e4a6a3b34544f8e6ab63cd64c2ead6b958241b136fcffdb9bd1a643b92f970"
+    },
+    "server/runtime/fleet_wire.py": {
+      "source_component": "runtime",
+      "source_sha256": "ee92b858776bb8ecdcb2f483146eae88464bb713531774d96721f067398e98fc"
+    },
+    "server/runtime/membership_admission.py": {
+      "source_component": "runtime",
+      "source_sha256": "1988edf209c698bb49c34075c1e9f5299da04f43b912bab99fa7ad2628d0b901"
+    },
+    "server/runtime/membership_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "6a632263fa470c72ce9300cbf9a05b56d7311a1d0c5e941da2927feb5009fc2d"
+    },
+    "server/runtime/mutation_dispatch.py": {
+      "source_component": "runtime",
+      "source_sha256": "925c735b5d7dc1e7ef66b2dec38728ae14313357b32ccd42a53cda332659e2d5"
+    },
+    "server/runtime/mutation_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "344e8418dddee0048c7cec007e46bf0b213dc5cf717331fe940ea620530a6726"
+    },
+    "server/runtime/mutation_spec.py": {
+      "source_component": "runtime",
+      "source_sha256": "7cc39ae472d93b037105ebe9304b5e45b8009bf840ee6115f84741dcc7253823"
+    },
+    "server/runtime/native_closed.py": {
+      "source_component": "runtime",
+      "source_sha256": "169d8e8453c6776ea8a742630b57b1706eacac4d06999372864c227d73bbb37d"
+    },
+    "server/runtime/native_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "67ad259abab3bc1e9d5cd218832c9ab852a0aefad20c0470b00e97244a1990d6"
+    },
+    "server/runtime/native_policy.py": {
+      "source_component": "runtime",
+      "source_sha256": "92715027538de9a7ee82408cb458f925c31ff7c8766021a52b98524ba209b67a"
+    },
+    "server/runtime/native_quiescent.py": {
+      "source_component": "runtime",
+      "source_sha256": "b563aaf429d637203327acb05fe02316fb4b86c7a941ae336b62d08b829e5986"
+    },
+    "server/runtime/native_runtime.py": {
+      "source_component": "runtime",
+      "source_sha256": "0b067ddf0c79811cdafd80fbc0307ddb784b1740e813129f2010d6049122f839"
+    },
+    "server/runtime/native_support.py": {
+      "source_component": "runtime",
+      "source_sha256": "7b16876fa1675e8c8ac309cae7d16ee582a444cf51e950526f54cccbbf2d0e5b"
+    },
+    "server/runtime/network_readonly.py": {
+      "source_component": "runtime",
+      "source_sha256": "a10ce2f54f887717e592023868aa72cee6c1ebe1e6769724e69783849374b6b6"
+    },
+    "server/runtime/org.familyvpn.guardian-recovery.plist": {
+      "source_component": "runtime",
+      "source_sha256": "9d9700f3c8a347e9a9e99abc652ecc6b23f2ea64a51063feedea5f71ffe1f150"
+    },
+    "server/runtime/org.familyvpn.service.plist": {
+      "source_component": "runtime",
+      "source_sha256": "5e8bdfb7f8ed53a402e37e3b4283287ea81ef5a6889638958f2bae72e43c1f95"
+    },
+    "server/runtime/parent-profile_builder.py": {
+      "source_component": "runtime",
+      "source_sha256": "83ff70ed52cff719f5c2e820953069e252c87b2a576f59767176beed0bedf237"
+    },
+    "server/runtime/pki_io.py": {
+      "source_component": "runtime",
+      "source_sha256": "e8796c9e77fccead707e108439cc3cfc23a3bb87678bee54f9394fdc86da535b"
+    },
+    "server/runtime/probe_contract.py": {
+      "source_component": "runtime",
+      "source_sha256": "3a034707d24332380a57693203aaeb2cdab4bfe407f85b8d32a30b17228ab9f8"
+    },
+    "server/runtime/probe_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "b4abef1c0a3fe0d333dcf62d23044f42e111c3e1a717c5b2f3db31f09bf6ad84"
+    },
+    "server/runtime/probe_identity.py": {
+      "source_component": "runtime",
+      "source_sha256": "6fa66338a4c73b44ffa31331a14485b31ff460aa6b10bfcc6697c2e488a0d087"
+    },
+    "server/runtime/probe_owner.py": {
+      "source_component": "runtime",
+      "source_sha256": "578ba90a0f6d6b121537389b25cff232698b9612dc76370bcecda91c73ca3386"
+    },
+    "server/runtime/probe_paths.py": {
+      "source_component": "runtime",
+      "source_sha256": "4c034fd2088451ca6fb10e239dcd0f0a4a040d9e0bbc93b10a1bb30911621036"
+    },
+    "server/runtime/probe_policy.py": {
+      "source_component": "runtime",
+      "source_sha256": "dd381e75bf2fcb369f29751e03ac9a70ad26b8e4ce92404d85d9b22e9a6bf1b6"
+    },
+    "server/runtime/probe_process.py": {
+      "source_component": "runtime",
+      "source_sha256": "17e4d54d3afcf24f0218fe0cda02a0524ea2ef4d5abc6e701aa64b3f817d23fa"
+    },
+    "server/runtime/probe_records.py": {
+      "source_component": "runtime",
+      "source_sha256": "3e993069f92ab5aed0734160f57923cb4a8958b3b450ed3939934ae7cc6bfa74"
+    },
+    "server/runtime/production_activation.py": {
+      "source_component": "runtime",
+      "source_sha256": "8550c99bedb066587ce85e40bdc3e18fd858aac46c365e8971a92137cca7cd58"
+    },
+    "server/runtime/production_boot.py": {
+      "source_component": "runtime",
+      "source_sha256": "c9739ddf3c58f297800540942b33b5bacc7173e863e5e48b918401d7a91ae69a"
+    },
+    "server/runtime/production_source.py": {
+      "source_component": "runtime",
+      "source_sha256": "ccfd53d4b5af7c52441c37cbdb47a5e4cb045ba10d60e54a497aada97446ee05"
+    },
+    "server/runtime/profile_export.py": {
+      "source_component": "runtime",
+      "source_sha256": "89264bb92b8bdda9e84e295298dc476f1e53f8713016139ed7cecfa75b211d4f"
+    },
+    "server/runtime/recover_only.py": {
+      "source_component": "runtime",
+      "source_sha256": "a18af204901d7d2efe1cbee8b27bc4ec6ff54541fa2a4f2314051a15f87296a5"
+    },
+    "server/runtime/registry.py": {
+      "source_component": "runtime",
+      "source_sha256": "7dea4f0a700ef28f48f63e0a1d741d9048d5bb1d6204e49413b275a652394a95"
+    },
+    "server/runtime/renewal.py": {
+      "source_component": "runtime",
+      "source_sha256": "bc8dff749365ae0df49db084add2817754c2a40c22dcc59ef8c740fb4c245426"
+    },
+    "server/runtime/reviewed_policy.py": {
+      "source_component": "runtime",
+      "source_sha256": "8b3ddf5073bd6974c373cdf9ed9bb56db018bf2fe2aac35f4990b4c594d685e7"
+    },
+    "server/runtime/runtime_resources.py": {
+      "source_component": "runtime",
+      "source_sha256": "51bb046bfc039797402822578cd8f97e615bc3fe8f26a20402f7115919e7efd4"
+    },
+    "server/runtime/service_pki.py": {
+      "source_component": "runtime",
+      "source_sha256": "6ea90390bf53eafe21603d0edc96c3e72257066e156dfd2ec4141d3cb98d1719"
+    },
+    "server/runtime/service_recovery_readback.py": {
+      "source_component": "runtime",
+      "source_sha256": "4f972072a50dfa9d01e8fa47bf8c81596f89f24af8a39f66d57248dfeb1c5119"
+    },
+    "server/runtime/service_supervisor.py": {
+      "source_component": "runtime",
+      "source_sha256": "79eb4ec09e78543d2d9265535c216e4180d9d8c3e138420737b1ccbeea5a52f4"
+    },
+    "server/runtime/short_admission.py": {
+      "source_component": "runtime",
+      "source_sha256": "00604888445059aa440377ca1d6225576b5176338baade023beb9849bbdeb4fd"
+    },
+    "server/runtime/snapshot_io.py": {
+      "source_component": "runtime",
+      "source_sha256": "a742f384ca4c9c68a7c05b5e3195e4b1f70c5c91c7d18bb3bcd53a9ba0aa7e7e"
+    },
+    "server/runtime/spawn_gate.py": {
+      "source_component": "runtime",
+      "source_sha256": "e203ac1ed2e18b3e05c744bc1892ac816ebb89aadf5959b876f0e2c88eccb2a8"
+    },
+    "server/runtime/staged_issuer.py": {
+      "source_component": "runtime",
+      "source_sha256": "157fa50b6eeab6a3370eff659f53e95e387debb2f6a74563e6be9dcd8c4ce5b4"
+    },
+    "server/runtime/supervisor-config.json": {
+      "source_component": "runtime",
+      "source_sha256": "c000a7d86a127bb078a12b98972caf252ac91b6ffcc67d1ab5875b4f8c02df0f"
+    },
+    "server/runtime/supervisor_core.py": {
+      "source_component": "runtime",
+      "source_sha256": "e0437daf5fa117ad0550d52d04919a018a6f061877c0af5d1ea2abc2e86406aa"
+    },
+    "server/runtime/supervisor_log.py": {
+      "source_component": "runtime",
+      "source_sha256": "6126032570fa3e03f894f88e660efb7f493eba32f5bf6cb85f55e983d2874a12"
+    },
+    "server/runtime/swanctl.guardian.conf": {
+      "source_component": "runtime",
+      "source_sha256": "bfac6ddb0934d4cac9d88ec29640485a8e5224ba92bda68b37307f62862aac71"
+    },
+    "server/runtime/vici/__init__.py": {
+      "source_component": "runtime",
+      "source_sha256": "f77019594ecc7a2198c796d7ca62bf22e90d8e0258b0831e4467b572a2393c52"
+    },
+    "server/runtime/vici/command_wrappers.py": {
+      "source_component": "runtime",
+      "source_sha256": "0ee5f892bacfbcdcf7ceff3f45d76a471de30d3ec8cfda15d69fb6b350205f4f"
+    },
+    "server/runtime/vici/event_listener.py": {
+      "source_component": "runtime",
+      "source_sha256": "85c57c1fb4cbdadc03a5341963cf3aa28f62709d3443d46e71ead3f75c6bf448"
+    },
+    "server/runtime/vici/exception.py": {
+      "source_component": "runtime",
+      "source_sha256": "97ef178d3a97b71eb1be45e9ef369de6b0fd96a376526b21044f204b8712feb3"
+    },
+    "server/runtime/vici/protocol.py": {
+      "source_component": "runtime",
+      "source_sha256": "f86247d58ce36a84a651bc7fcce9b5acd789b185c056e8fc6dc7015bfc07d3a5"
+    },
+    "server/runtime/vici/session.py": {
+      "source_component": "runtime",
+      "source_sha256": "78c4ba125b0dc8d83703f03055de39c9fb80180965b52512de836b4f68dbdb59"
+    }
+  }
+}
