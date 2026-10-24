@@ -7,6 +7,7 @@ class Attention(RuntimeError):pass
 class OwnedDaemonExit(RuntimeError):pass
 class KnownUplinkChange(RuntimeError):pass
 class ViciUnavailable(RuntimeError):pass
+class GateReadbackUnavailable(RuntimeError):pass
 class MaintenanceDue(RuntimeError):pass
 class ConfigurationChanged(Attention):pass
 class RequestedStop(RuntimeError):pass
@@ -17,7 +18,8 @@ PHASES={'DISABLED','PREFLIGHT','STARTING','RUNNING','RECOVERING','BACKOFF','STOP
 REASONS={'initial','disabled','manual_stop','known_daemon_exit','known_uplink_change','scheduled_maintenance','interrupted_owner',
          'unknown_failure','configuration_changed','activation_not_accepted',
          'recovery_not_proven','retry_budget_exhausted','cross_boot_unfinished',
-         'latched_attention','running','backoff','preflight','starting','network_not_ready','vici_unavailable'}
+         'latched_attention','running','backoff','preflight','starting','network_not_ready','vici_unavailable',
+         'gate_readback_unavailable'}
 RETRY_WINDOW=900
 RETRY_DELAYS=(5,15,60)
 MAX_ATTEMPTS=3
@@ -108,6 +110,11 @@ class Supervisor:
         # its already committed deadline below.
         recent=sum(now-attempt<RETRY_WINDOW for attempt in self.state['attempts'])
         delay=RETRY_DELAYS[min(max(recent-1,0),len(RETRY_DELAYS)-1)]
+        if reason=='gate_readback_unavailable' and recent>=MAX_ATTEMPTS:
+            # Preserve the start rate, but a verified-clean readback failure
+            # may wait out the budget instead of becoming a permanent latch.
+            oldest=min(attempt for attempt in self.state['attempts'] if now-attempt<RETRY_WINDOW)
+            delay=min(delay,max(0,oldest+RETRY_WINDOW-now))
         due=self.state['next_due'] if preserve else now+delay
         self.write('BACKOFF',reason,next_due=due)
         while self.clock()<due:
@@ -173,13 +180,23 @@ class Supervisor:
             self.state.update(attempts=[],next_due=0)
         try:
             if phase in ['PREFLIGHT','STARTING','RUNNING','RECOVERING','BACKOFF']:
-                reason=('network_not_ready' if phase=='BACKOFF' and self.state['reason']=='network_not_ready'
+                reason=(self.state['reason'] if
+                        (phase=='BACKOFF' and self.state['reason']=='network_not_ready') or
+                        (phase in ('RECOVERING','BACKOFF') and self.state['reason']=='gate_readback_unavailable')
                         else 'interrupted_owner')
                 if not self.backoff(reason,preserve=phase=='BACKOFF'):
                     self.write('STOPPED','manual_stop',next_due=0);return 0
             while not self.d.stopped():
                 if self.d.configuration().fingerprint!=self.state['fingerprint']:
                     raise ConfigurationChanged('configuration_changed')
+                if (self.owner is None and self.state['phase']=='BACKOFF'
+                        and self.state['reason']=='gate_readback_unavailable'
+                        and sum(self.clock()-attempt<RETRY_WINDOW for attempt in self.state['attempts'])>=MAX_ATTEMPTS):
+                    # Entry is possible only after clean full recovery above,
+                    # or after a fresh recovery proof on a resumed BACKOFF.
+                    if not self.backoff('gate_readback_unavailable'):
+                        self.write('STOPPED','manual_stop',next_due=0);return 0
+                    continue
                 self.write('PREFLIGHT','preflight',next_due=0)
                 try:
                     session=self.d.preflight() # fresh baseline/protection prerequisites every time
@@ -206,12 +223,13 @@ class Supervisor:
                 try:self.d.serve(self.owner)
                 except Exception as error:failure=error
                 if type(failure)is RequestedStop and self.d.stopped():failure=None
-                if failure is not None and type(failure) not in (OwnedDaemonExit,KnownUplinkChange,MaintenanceDue,ViciUnavailable):
+                if failure is not None and type(failure) not in (OwnedDaemonExit,KnownUplinkChange,MaintenanceDue,ViciUnavailable,GateReadbackUnavailable):
                     self.failure(failure)
                     self.attention('configuration_changed' if contains(failure,ConfigurationChanged) else 'unknown_failure')
                     self.close();return 0
-                if type(failure)is ViciUnavailable:self.failure(failure)
-                reason=('vici_unavailable' if type(failure)is ViciUnavailable else
+                if type(failure)in (ViciUnavailable,GateReadbackUnavailable):self.failure(failure)
+                reason=('gate_readback_unavailable' if type(failure)is GateReadbackUnavailable else
+                        'vici_unavailable' if type(failure)is ViciUnavailable else
                         'scheduled_maintenance' if type(failure)is MaintenanceDue else
                         'known_uplink_change' if type(failure)is KnownUplinkChange else 'known_daemon_exit')
                 self.write('RECOVERING','manual_stop' if self.d.stopped() else reason)

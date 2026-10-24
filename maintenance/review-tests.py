@@ -53,6 +53,16 @@ gone = {'pid':None,'loaded':True}
 for native in ('WAITING', 'ACTIVE'):
     check(m.service_decision(s, dict(n,phase=native), c, v, live, boot)=='already_running', 'healthy native state is preserved')
 check(m.service_decision(s,n,c,v,gone,boot)=='restore_supervisor','abnormal missing supervisor eligible')
+retry = dict(s, phase='BACKOFF', reason='gate_readback_unavailable')
+check(m.service_decision(retry,n,c,v,gone,boot)=='restore_supervisor','known PF readback cooldown can resume')
+check(m.service_decision(retry,n,c,v,live,boot)=='already_running','running cooldown supervisor is preserved')
+for state,native,control,verified in (
+    (retry,dict(n,phase='ATTENTION'),c,v),
+    (dict(retry,reason='unknown_failure'),n,c,v),
+    (retry,n,dict(c,phase='STOPPED'),v),
+    (retry,n,c,dict(v,service_enabled=False)),
+):
+    check(m.service_decision(state,native,control,verified,gone,boot)!='restore_supervisor','cooldown reason cannot bypass existing stop or recovery boundaries')
 for phase in ('STOPPED','DISABLED','ATTENTION','UNKNOWN'):
     check(m.service_decision(dict(s,phase=phase),n,c,v,gone,boot)!='restore_supervisor','stopped or latched service preserved')
 for phase in ('PREFLIGHT','STARTING','RUNNING','RECOVERING','BACKOFF'):

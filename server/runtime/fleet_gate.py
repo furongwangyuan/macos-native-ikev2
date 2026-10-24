@@ -92,7 +92,7 @@ class FleetGate:
             if expected or not gate.closed():raise s.Refused('fleet_initial_gate_not_closed')
             before=copy.deepcopy(self.state['pf']['guard'])
         text=self.rules(proposed);path,compiled=gate.compile_rules(text,'active.pf')
-        self.state['gate_intent']=dict(phase='apply-intent',sha256=s.digest(text.encode()),expected=compiled,previous=before,
+        self.state['gate_intent']=dict(phase='apply-intent',sha256=s.digest(s.read(path)),expected=compiled,previous=before,
             fleet_tables_before=fleet_tables.expected(expected),fleet_tables_after=fleet_tables.expected(proposed))
         self.owner.save() # Original and replacement rules survive a death before/after load.
         if gate.state.get('mode')!='active':

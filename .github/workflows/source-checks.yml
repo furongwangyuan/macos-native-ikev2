@@ -27,6 +27,8 @@ jobs:
           python3 -I -B server/tools/build_reference.py --check
           python3 -I -B tests/server/run.py
           bash -n native/build-native.sh
+      - name: macOS PF compiler regression (syntax only, no rule loads)
+        run: python3 -I -B tests/native/pf_syntax.py
       - name: Monitoring, DDNS and maintenance (mocked IO)
         run: |
           python3 -I -B monitor/check.py

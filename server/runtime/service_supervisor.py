@@ -20,7 +20,7 @@ import native_runtime as runtime
 import recover_only
 import service_recovery_readback
 from continuous_clock import make_clock
-from supervisor_core import Supervisor,Configuration,Attention,OwnedDaemonExit,KnownUplinkChange,ViciUnavailable,ConfigurationChanged,RequestedStop,NetworkNotReady,valid_state
+from supervisor_core import Supervisor,Configuration,Attention,OwnedDaemonExit,KnownUplinkChange,ViciUnavailable,GateReadbackUnavailable,ConfigurationChanged,RequestedStop,NetworkNotReady,valid_state
 from supervisor_log import EventLog
 
 RESOURCES=('membership_gate.py','membership_admission.py','enrollment.py','staged_issuer.py',
@@ -66,12 +66,13 @@ FAILURE_CODES=frozenset({
     'alf_changed_preserving_external','crl_expired','crl_changed','active_gate_changed','closed_gate_changed',
     'bounded_exchange_unavailable','vici_unavailable','vici_exchange_timeout','vici_exchange_eof',
     'vici_exchange_io','vici_exchange_capacity','vici_exchange_socket','vici_exchange_protocol','vici_exchange_deadline_invalid',
-    'production_source_binding','production_boot_prior_attention'
+    'production_source_binding','production_boot_prior_attention',
+    'fleet_active_rules_or_tables_readback','fleet_active_postreadback','gate_readback_unavailable'
 })
 FAILURE_TYPES=frozenset({'Refused','Fault','PolicyTransition','Attention','ConfigurationChanged','RuntimeError',
     'ValueError','TypeError','OSError','PermissionError','FileNotFoundError','BlockingIOError',
     'TimeoutError','TimeoutExpired','JSONDecodeError','UnicodeDecodeError',
-    'TransportFault','TransientTransportFault','ExchangeFault','ViciUnavailable'})
+    'TransportFault','TransientTransportFault','ExchangeFault','ViciUnavailable','GateReadbackUnavailable'})
 
 
 def failure_record(error):
@@ -362,6 +363,19 @@ class NativeDependencies:
                 raise RequestedStop('requested_stop') from error
             if type(cause) in (OwnedDaemonExit,KnownUplinkChange) and error.__cause__ is cause:
                 raise type(cause)('known_service_transition') from error
+            # A known activation readback failure may retry only after the
+            # coordinator closed the exact recorded rules/tables and the
+            # controller's final guard also returned. Unknown anchor contents
+            # fail that guard and cannot reach this original exact wrapper.
+            # The supervisor still requires full native cleanup/readback
+            # before backoff; this classification never opens any data path.
+            closed=getattr(controller.coordinator,'last_result',None)
+            if (type(error)is runtime.ctl.Fault and error.args==('fleet_controller_stopped',)
+                    and error.__cause__ is cause and type(cause)is s.Refused
+                    and cause.args in (('fleet_active_rules_or_tables_readback',),('fleet_active_postreadback',))
+                    and closed is not None and closed.state=='STOPPED'
+                    and closed.global_guard_confirmed is True):
+                raise GateReadbackUnavailable('gate_readback_unavailable') from error
             # A fresh, fully bounded read has already been retried with native
             # protection and ownership checked between attempts. Only these
             # exact I/O failures or bounded event-capacity pressure may use

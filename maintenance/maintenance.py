@@ -226,7 +226,7 @@ def service_decision(s, n, c, verified, live, boot):
         return 'latched_or_stopped_state_preserved'
     if s.get('reason') not in ('initial', 'preflight', 'starting', 'running', 'known_daemon_exit',
                               'known_uplink_change', 'scheduled_maintenance', 'interrupted_owner',
-                              'backoff', 'network_not_ready', 'vici_unavailable'):
+                              'backoff', 'network_not_ready', 'vici_unavailable', 'gate_readback_unavailable'):
         return 'failure_requires_diagnosis'
     if s.get('boot') != boot or n.get('boot') != boot or n.get('phase') == 'ATTENTION':
         return 'boot_or_native_state_requires_diagnosis'

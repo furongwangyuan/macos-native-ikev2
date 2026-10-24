@@ -20,6 +20,15 @@ block drop quick tagged FAMILYVPN_EGRESS6
 def rule_lines(text):return [x.strip() for x in text.splitlines() if x.strip()]
 
 
+def stable_rules_source(text):
+    # Syntax-only and actual PF loads may assign different anonymous table
+    # names. Keep this anchor's generated rules explicit so exact comparison
+    # stays reliable; preserve the persisted guard bytes for old-owner cleanup.
+    directive='set ruleset-optimization none\n'
+    if text.startswith(directive):return text
+    return directive+text
+
+
 def reference_tokens(text):
     """Actual pfctl -s References table; elapsed TIMESTAMP is not ownership."""
     if type(text)is not str or len(text)>65536 or '\0' in text:
@@ -170,7 +179,7 @@ class Gate:
         if not re.fullmatch(r'nat-anchor "'+re.escape(ANCHOR)+r'"(?: all)?',nats[0]):
             raise s.Refused('nat_anchor_not_first')
     def compile_rules(self,text,name):
-        path=s.RUN/name;s.atomic(path,text)
+        path=s.RUN/name;s.atomic(path,stable_rules_source(text))
         result=s.run([PF,'-n','-v','-a',ANCHOR,'-f',path])
         expected=classify(result.stdout)
         if not expected['filters']:raise s.Refused('empty_compiled_filter')
@@ -304,7 +313,7 @@ class Gate:
         if not self.mode():raise s.Refused('closed_mode_activation_unavailable')
         self.guard('activate-validation');self.restore_sysctls()
         path,expected=self.compile_rules(text,'active.pf')
-        self.session['gate_intent']=dict(phase='apply-intent',sha256=s.digest(text.encode()),expected=expected)
+        self.session['gate_intent']=dict(phase='apply-intent',sha256=s.digest(s.read(path)),expected=expected)
         self.save()
         for key,value in s.SYS.items():self.set_knob(key,value)
         if s.values()!=s.SYS:raise s.Refused('forwarding_readback')
