@@ -96,6 +96,25 @@ class ShapeTests(unittest.TestCase):
             self.assertEqual(m.api_response_shape(body)['parse'], 'parsed')
             self.assertEqual(m.api_result(body), 'unknown')
 
+    def test_explicit_depth_boundary_for_arrays_objects_and_scalar_brackets(self):
+        # Root containers count as depth one; malformed/deep data must not be
+        # accepted merely because a newer interpreter allows deeper JSON trees.
+        limit = m.API_JSON_MAX_DEPTH
+        for opening, closing in [('[', ']'), ('{"child":', '}')]:
+            allowed = opening * limit + 'null' + closing * limit
+            rejected = opening * (limit + 1) + 'null' + closing * (limit + 1)
+            for encode in (lambda value: value, lambda value: value.encode()):
+                self.assertEqual(m.api_response_shape(encode(allowed))['parse'], 'parsed')
+                self.assertEqual(m.api_response_shape(encode(rejected))['parse'], 'invalid_json')
+                self.assertEqual(m.api_result(encode(rejected)), 'unknown')
+        quoted = json.dumps({'status': 'success', 'error_code': 0,
+                             'content': ['[{}]\\"' * 100]})
+        self.assertEqual(m.api_response_shape(quoted)['parse'], 'parsed')
+        self.assertEqual(m.api_result(quoted), 'acknowledged')
+        # Size bounds apply to the decision parser as well as shape metadata.
+        padded = '{"status":"success"}' + ' ' * 16384
+        self.assertEqual(m.api_result(padded), 'unknown')
+
     def test_once_only_shape_event_and_unknown_still_never_verifies_credential(self):
         raw = json.dumps({'status': CANARY, 'error_code': '0', 'content': CANARY, CANARY: CANARY}).encode()
         saved, output = [], io.StringIO()

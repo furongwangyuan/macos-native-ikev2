@@ -351,6 +351,30 @@ def update_url(ip, password):
         pwd=password_valid(password)))
 
 
+API_JSON_MAX_DEPTH = 32
+
+
+def api_json_depth_ok(value):
+    """Bound container nesting independently of Python's JSON recursion limit.
+
+    The caller also bounds response length. Use an explicit stack so neither
+    this check nor its result depends on the interpreter's recursion threshold.
+    Strings (including escaped brackets) are scalar values, not containers.
+    """
+    pending = [(value, 0)]
+    while pending:
+        item, parent_depth = pending.pop()
+        if type(item) not in (dict, list):
+            continue
+        depth = parent_depth + 1
+        if depth > API_JSON_MAX_DEPTH:
+            return False
+        children = item.values() if type(item) is dict else item
+        pending.extend((child, depth) for child in children
+                       if type(child) in (dict, list))
+    return True
+
+
 def api_response_shape(body):
     """Fixed metadata only, independent of acknowledgement/credential decisions.
 
@@ -384,6 +408,8 @@ def api_response_shape(body):
                 str: 'string', list: 'array', dict: 'object'}.get(type(value), 'unknown')
     try:
         obj = json.loads(body, object_pairs_hook=unique, parse_constant=reject_constant)
+        if not api_json_depth_ok(obj):
+            raise ValueError()
     except DuplicateKey:
         result['parse'] = 'duplicate_keys'
         return result
@@ -424,6 +450,8 @@ def api_result(body):
     # explicit success and integer zero. Neither partial/extra fields nor plain
     # text are acknowledgements. This is still followed by authoritative DNS.
     # The potentially sensitive status/content text never leaves this function.
+    if not isinstance(body, (bytes, str)) or len(body) > 16384:
+        return 'unknown'
     def unique(pairs):
         result = {}
         for key, value in pairs:
@@ -433,6 +461,8 @@ def api_result(body):
         return result
     try:
         obj = json.loads(body, object_pairs_hook=unique)
+        if not api_json_depth_ok(obj):
+            return 'unknown'
         if isinstance(obj, dict) and set(obj) == {'status'}:
             return 'acknowledged' if obj['status'] == 'success' else 'unknown'
         if (not isinstance(obj, dict) or set(obj) != {'status', 'error_code', 'content'}
