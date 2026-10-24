@@ -287,7 +287,8 @@ charon {
             self.same_boot()
             if self.daemon is not None:self.daemon.poll()
             proc=self.owned_process()
-            if proc is None or proc['path']!=str(s.CHARON):raise ctl.Fault('charon_exited_or_changed')
+            if proc is None:raise ctl.Fault('charon_process_absent')
+            if proc['path']!=str(s.CHARON):raise ctl.Fault('charon_exited_or_changed')
             expected=(self.alf_transaction.expected() if self.alf_transaction is not None
                       else self.session['alf_before'])
             if alf.snapshot()!=expected:raise ctl.Fault('alf_changed_preserving_external')
@@ -414,10 +415,15 @@ charon {
         self.session['recovery_result']=('restored' if not errors else
             'protected-needs-attention' if closed else 'protection-unverified')
         self.session['phase']='ATTENTION' if errors else 'RESTORED';self.session['active']=bool(errors)
-        self.save();s.say('native_recovery',complete=not errors,reason_codes=self.session['cleanup_codes'],
-                         result=self.session['recovery_result'],alf_was_never_modified=self.alf_transaction is None,
-                         alf_close_verified=alf_closed,
-                         alf_restored_verified=self.alf_transaction is not None and not errors)
+        self.save()
+        # The durable recovery result and later kernel readback determine
+        # success. An unavailable diagnostic output must not replace them.
+        try:
+            s.say('native_recovery',complete=not errors,reason_codes=self.session['cleanup_codes'],
+                  result=self.session['recovery_result'],alf_was_never_modified=self.alf_transaction is None,
+                  alf_close_verified=alf_closed,
+                  alf_restored_verified=self.alf_transaction is not None and not errors)
+        except Exception:pass
         return not errors
 
 
@@ -460,7 +466,7 @@ def closed_loop(owner,action,clock):
     while clock()<end and not STOP.wait(0.5):
         try:owner.check_local(10)
         except ctl.Fault as error:
-            if injected is None or str(error)!='charon_exited_or_changed':raise
+            if injected is None or type(error)is not ctl.Fault or error.args!=('charon_process_absent',):raise
             detected=clock()
             owner.guard('owned_charon_fault_detected',10)
             if not owner.gate.closed():raise s.Refused('fault_close_unverified')

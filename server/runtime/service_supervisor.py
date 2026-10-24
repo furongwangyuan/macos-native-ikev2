@@ -56,7 +56,7 @@ FAILURE_CODES=frozenset({
     'own_pf_reference_disappeared','own_reference_release_unverified','pf_reference_table_unknown',
     'pf_enabled_baseline_not_restored','pf_enabled_state_unknown','ambiguous_pf_reference_requires_review',
     'sysctl_readback','sysctl_external_change','forwarding_restore_incomplete','sysctl_values_output',
-    'charon_start_failed','restoration_child_not_absent',
+    'charon_start_failed','charon_process_absent','restoration_child_not_absent',
     'fleet_registry_changed','fleet_charon_identity','fleet_loaded_config_missing',
     'fleet_loaded_config_changed','fleet_generated_connection_not_loaded','fleet_vici_owner_unverified',
     'fleet_vici_deadline','fleet_controller_stopped','fleet_native_journal_incomplete','fleet_vici_peerpid_unverified',
@@ -219,7 +219,16 @@ class ServiceOwner(runtime.Owner):
         if self.clock()-self.config_checked>=5:
             if read_configuration().fingerprint!=self.fingerprint:raise ConfigurationChanged('configuration_changed')
             self.config_checked=self.clock()
-        return super().check_local(timeout)
+        try:return super().check_local(timeout)
+        except (runtime.ctl.Fault,s.Refused) as error:
+            # The child can exit after known_child_alive() but before libproc's
+            # separate identity/path reads. Only the current owned Popen handle
+            # can prove that exit; missing metadata alone never does.
+            unavailable=(type(error)is runtime.ctl.Fault and error.args==('charon_process_absent',)) or (
+                type(error)is s.Refused and error.args in
+                (('process_identity_unavailable',),('process_path_unavailable',)))
+            if unavailable:self.known_child_alive()
+            raise
     def check_uplink(self,local):
         if self.data_mode and runtime.network.known_change(self.session['health'],local):
             # Controller normally audits SPD after check_local. Do not let a

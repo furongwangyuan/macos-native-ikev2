@@ -185,10 +185,13 @@ class Checks(unittest.TestCase):
         self.assertTrue(any(x['phase']=='BACKOFF' and x['reason']=='gate_readback_unavailable'
                             for x in store.history))
 
-    def test_other_transient_types_keep_original_budget_policy(self):
-        deps=Deps([core.ViciUnavailable('vici_unavailable') for _ in range(3)])
+    def test_other_known_transient_types_wait_out_existing_budget(self):
+        deps=Deps([core.ViciUnavailable('vici_unavailable') for _ in range(3)]+[None])
         store=self.run_case(deps)
-        self.assertEqual((store.value['phase'],store.value['reason']),('ATTENTION','retry_budget_exhausted'))
+        self.assertEqual((store.value['phase'],store.value['reason']),('STOPPED','manual_stop'))
+        self.assertFalse(any(x['phase']=='ATTENTION' for x in store.history))
+        self.assertEqual(deps.calls.count('serve'),4)
+        self.assertGreaterEqual(deps.starts[3]-deps.starts[0],900)
 
     def test_diagnostics_and_saved_state_accept_new_fixed_reason(self):
         error = core.GateReadbackUnavailable('gate_readback_unavailable')

@@ -23,6 +23,11 @@ REASONS={'initial','disabled','manual_stop','known_daemon_exit','known_uplink_ch
 RETRY_WINDOW=900
 RETRY_DELAYS=(5,15,60)
 MAX_ATTEMPTS=3
+# These exact serve outcomes have already stopped their owner and must complete
+# native cleanup/readback before entering BACKOFF. A spent start budget delays
+# the next attempt; it does not turn a known, fully recovered stop permanent.
+RECOVERY_REASONS=frozenset({'known_daemon_exit','known_uplink_change','scheduled_maintenance',
+                            'vici_unavailable','gate_readback_unavailable'})
 
 
 @dataclass(frozen=True)
@@ -110,9 +115,9 @@ class Supervisor:
         # its already committed deadline below.
         recent=sum(now-attempt<RETRY_WINDOW for attempt in self.state['attempts'])
         delay=RETRY_DELAYS[min(max(recent-1,0),len(RETRY_DELAYS)-1)]
-        if reason=='gate_readback_unavailable' and recent>=MAX_ATTEMPTS:
-            # Preserve the start rate, but a verified-clean readback failure
-            # may wait out the budget instead of becoming a permanent latch.
+        if reason in RECOVERY_REASONS and recent>=MAX_ATTEMPTS:
+            # Preserve the start rate, but a verified-clean known stop may
+            # wait out the budget instead of becoming a permanent latch.
             oldest=min(attempt for attempt in self.state['attempts'] if now-attempt<RETRY_WINDOW)
             delay=min(delay,max(0,oldest+RETRY_WINDOW-now))
         due=self.state['next_due'] if preserve else now+delay
@@ -182,7 +187,7 @@ class Supervisor:
             if phase in ['PREFLIGHT','STARTING','RUNNING','RECOVERING','BACKOFF']:
                 reason=(self.state['reason'] if
                         (phase=='BACKOFF' and self.state['reason']=='network_not_ready') or
-                        (phase in ('RECOVERING','BACKOFF') and self.state['reason']=='gate_readback_unavailable')
+                        (phase in ('RECOVERING','BACKOFF') and self.state['reason'] in RECOVERY_REASONS)
                         else 'interrupted_owner')
                 if not self.backoff(reason,preserve=phase=='BACKOFF'):
                     self.write('STOPPED','manual_stop',next_due=0);return 0
@@ -190,11 +195,11 @@ class Supervisor:
                 if self.d.configuration().fingerprint!=self.state['fingerprint']:
                     raise ConfigurationChanged('configuration_changed')
                 if (self.owner is None and self.state['phase']=='BACKOFF'
-                        and self.state['reason']=='gate_readback_unavailable'
+                        and self.state['reason'] in RECOVERY_REASONS
                         and sum(self.clock()-attempt<RETRY_WINDOW for attempt in self.state['attempts'])>=MAX_ATTEMPTS):
                     # Entry is possible only after clean full recovery above,
                     # or after a fresh recovery proof on a resumed BACKOFF.
-                    if not self.backoff('gate_readback_unavailable'):
+                    if not self.backoff(self.state['reason']):
                         self.write('STOPPED','manual_stop',next_due=0);return 0
                     continue
                 self.write('PREFLIGHT','preflight',next_due=0)

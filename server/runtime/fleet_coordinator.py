@@ -11,6 +11,7 @@ from registry import normalize
 from fleet_policy import (DeviceProof, FleetProof, Generation, Snapshot, Fault,
                           PolicyTransition, audit, native_keys, registry_digest, checked_snapshot, MAX_IKE_EVENTS)
 from fleet_vici import ParseResult
+from fleet_transport import TransientTransportFault
 
 
 @dataclass(frozen=True)
@@ -260,6 +261,7 @@ class Coordinator:
         self.pending_count = 0
         self.last_result = None
         self.failure = None
+        self.transient_pauses = 0
 
     def _narrow(self, identifiers, reason):
         identifiers = set(identifiers) & set(self.active)
@@ -569,7 +571,24 @@ class Coordinator:
                 if d.device_id in self.guarded_proofs and d.device_id not in self.active and d.hosts}
             self.state = 'ACTIVE' if self.active else 'GUARDED'
             self.last_result = Result(self.state, tuple(sorted(self.active)), self.pending_count)
+            self.transient_pauses = 0
             return self.last_result
         except Exception as error:
+            # An unavailable complete VICI observation never retains an open
+            # data gate. Close the recorded active set, retain only its closed
+            # provenance, and allow a fresh three-frame tick without restarting
+            # charon/IKE. A third consecutive failure uses the existing full
+            # service recovery path; no partial observation is reused.
+            if (type(error)is TransientTransportFault and error.args in
+                    (('vici_exchange_timeout',),('vici_exchange_eof',),
+                     ('vici_exchange_io',),('vici_exchange_capacity',))
+                    and self.transient_pauses<2):
+                try:closed=self.adapter.guard_all('fleet_transient_observation') is True
+                except Exception:closed=False
+                if closed:
+                    self.active={};self.state='GUARDED';self.transient_pauses+=1
+                    self.last_result=Result('GUARDED',(),self.pending_count,
+                                            'fleet_transient_observation',True)
+                    return self.last_result
             self.failure = error
             return self._stop(str(error) or type(error).__name__)

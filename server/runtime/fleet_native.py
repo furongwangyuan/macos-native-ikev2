@@ -122,7 +122,16 @@ class NativeFleetAdapter:
         owner=self.owner
         owner.same_boot()
         owner.known_child_alive()
-        current=owner.owned_process()
+        try:current=owner.owned_process()
+        except s.Refused as error:
+            # An owned child can exit between poll() and libproc's identity
+            # reads. Missing metadata alone is not proof; only re-poll the
+            # same owned Popen for these exact unavailable observations.
+            if (type(error)is s.Refused and error.args in
+                    (('process_identity_unavailable',),('process_path_unavailable',))):
+                owner.known_child_alive()
+            raise
+        if current is None:owner.known_child_alive()
         if current is None or current['path']!=str(s.CHARON):raise s.Refused('fleet_charon_identity')
         registry_raw=s.read(session.REGISTRY,limit=65536)
         if session.static(registry_raw)!=owner.session['fleet']:raise s.Refused('fleet_registry_changed')
@@ -213,15 +222,29 @@ class NativeFleetAdapter:
             if remaining<=0:raise s.Refused('fleet_spd_audit_deadline')
             active[row['id']]=policies.policy_id_active(row['id'],kind,1 if row['direction']=='in' else 2,timeout=min(3,remaining))
         return records,active,native
+    def _route_output(self,flag,destination):
+        args=['/sbin/route','-n','get',flag,destination]
+        try:result=s.run(args,check=False)
+        except subprocess.TimeoutExpired as error:
+            # This fixed read-only lookup supplies evidence for one device.
+            # s.run has already killed/reaped its child. Missing evidence
+            # narrows that device via _route_valid(None), not the whole fleet.
+            if (type(error)is subprocess.TimeoutExpired and error.cmd==args
+                    and type(error.timeout)in (int,float) and 0<error.timeout<=5):
+                return None
+            raise
+        return result.stdout if result.returncode==0 else None
     def route(self,device):
         with runtime.budget(10):
             g=device.generation;routes=[]
             for flag,vip in (('-inet',g.vip4),('-inet6',g.vip6)):
-                raw=s.run(['/sbin/route','-n','get',flag,vip]).stdout
+                raw=self._route_output(flag,vip)
+                if raw is None:return None
                 try:reviewed_policy.verify_route(raw,vip)
                 except ValueError:return None
                 routes.append(coordinator.Route(vip,'en0',True,True))
-            raw=s.run(['/sbin/route','-n','get','-inet',g.peer4]).stdout
+            raw=self._route_output('-inet',g.peer4)
+            if raw is None:return None
             interface=re.findall(r'^\s*interface:\s+(\S+)\s*$',raw,re.M)
             flags=re.findall(r'^\s*flags:\s*<([^>]+)>\s*$',raw,re.M)
             if interface!=['en0'] or len(flags)!=1 or 'UP' not in flags[0].split(','):return None
