@@ -201,7 +201,7 @@ def expected(s):
     value = plistlib.loads(raw)
     wanted = dict(Label=LABEL, ProgramArguments=['/usr/bin/python3', '-I', '-B', PROGRAM],
         UserName='root', RunAtLoad=True, KeepAlive={'SuccessfulExit': False}, ThrottleInterval=15,
-        ProcessType='Background', StandardOutPath='/dev/null', StandardErrorPath='/dev/null')
+        ProcessType='Standard', StandardOutPath='/dev/null', StandardErrorPath='/dev/null')
     if value != wanted or type(value.get('ThrottleInterval')) is not int:
         raise Refused('production_plist_not_fixed')
     return raw
