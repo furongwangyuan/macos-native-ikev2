@@ -114,13 +114,15 @@ class NativeFleet(unittest.TestCase):
             with self.assertRaisesRegex(s.Refused,'rules_or_tables'):o.fleet_adapter.publish((),proof.devices,proof)
         self.assertEqual(o.session['fleet_active'],[]);self.assertEqual(o.session['gate_intent']['phase'],'apply-intent')
         self.assertEqual(o.session['gate_intent']['previous'],{'filters':['guard'],'nat':[]})
-    def test_a_state_residual_fails_narrow_without_false_receipt(self):
+    def test_a_state_residual_defers_narrow_without_false_clear_receipt(self):
         _,o,proof,*_=fixture();k=Kernel(o)
         with ExitStack() as st:
             k.bind(st);o.fleet_adapter.publish((),proof.devices,proof)
             d=next(x for x in proof.devices if x.device_id=='device01');other=tuple(x for x in proof.devices if x!=d)
             k.states='all tcp '+d.generation.vip4+':1234 -> 1.1.1.1:443 ESTABLISHED:ESTABLISHED\n'
-            with self.assertRaisesRegex(s.Refused,'states_remain'):o.fleet_adapter.narrow(proof.devices,other,(fc.CloseRequest(d.device_id,d.generation,d.generation.vip4,d.generation.vip6,d.hosts),))
+            request=fc.CloseRequest(d.device_id,d.generation,d.generation.vip4,d.generation.vip6,d.hosts)
+            receipt=o.fleet_adapter.narrow(proof.devices,other,(request,))
+            self.assertEqual(receipt,fc.NarrowReceipt(other,(),(request,)))
             self.assertEqual(fs.decode_active(o.session['fleet_active'],o.session['fleet']['registry']),other)
             self.assertEqual(o.session['fleet_closing']['phase'],'intent')
     def test_mutation_grammar_and_durable_retirement_precede_popen(self):

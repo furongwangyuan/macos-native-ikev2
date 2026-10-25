@@ -296,8 +296,16 @@ class NativeFleetAdapter:
                 if request!=coordinator.CloseRequest(d.device_id,d.generation,d.generation.vip4,d.generation.vip6,d.hosts):
                     raise s.Refused('fleet_narrow_generation_not_previous')
             self.gate.replace(expected,remaining) # Remove A first, retaining B's rules/forwarding.
-            self.gate.retire(requests)
-            return coordinator.NarrowReceipt(remaining,requests)
+            if self.gate.retire(requests):return coordinator.NarrowReceipt(remaining,requests)
+            return coordinator.NarrowReceipt(remaining,(),requests)
+    def retry_retirement(self,expected,requests):
+        # Called once per next controller tick, with the exact retained requests.
+        # No active-set replacement or shared closure occurs on this retry.
+        with runtime.budget(25):
+            self.owner.check_local(10)
+            if self.gate.current()!=expected:raise s.Refused('fleet_retirement_active_changed')
+            if self.gate.retire(requests):return coordinator.NarrowReceipt(expected,requests)
+            return coordinator.NarrowReceipt(expected,(),requests)
     def publish(self,expected,proposed,proof):
         with runtime.budget(25):
             policy.validate_proof(proof,self.owner.session['fleet']['registry'],session.endpoints(self.owner.session['fleet']))

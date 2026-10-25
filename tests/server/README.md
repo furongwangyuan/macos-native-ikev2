@@ -58,3 +58,13 @@ and both directions of IPv4/IPv6 generation handover. A failed IPv6 peer route
 must leave the unrelated IPv4 device forwarding. Their fixtures contain invented
 addresses and remain inside the same socket/subprocess-denying runner; they do
 not reproduce or publish any private packet capture or installation receipt.
+
+`test_pf_nat_chain.py` covers the actual three-endpoint, two-arrow NAT display
+with sanitized IPv4/IPv6 endpoints, every endpoint position, reverse direction,
+legacy parentheses, and malformed-line rejection. Its concrete adapter test
+retires device A while preserving B, then rejoins A without a shared guard.
+`test_pf_retirement_defer.py` covers persistent unknown state output, bounded
+read failures, residual states, deferred A rejoining, once-per-tick scoped
+retries and recovery. Rule/table changes, delete failures, ownership changes,
+and malformed receipts must remain visible. The existing residual-state test
+now requires a truthful deferred receipt instead of a false cleanup success.

@@ -76,6 +76,9 @@ class CloseRequest:
 class NarrowReceipt:
     remaining: tuple
     cleared: tuple
+    # Removal from the active tables is confirmed, but address-state absence
+    # is not. These requests cannot grant a new generation admission.
+    deferred: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -271,6 +274,26 @@ class Coordinator:
         self.last_result = None
         self.failure = None
         self.transient_pauses = 0
+        self.pending_retirements = {}
+
+    def _retirement_receipt(self, remaining, requests, receipt):
+        if (type(receipt)is not NarrowReceipt or receipt.remaining!=remaining
+                or type(receipt.cleared)is not tuple or type(receipt.deferred)is not tuple
+                or any(type(r)is not CloseRequest for r in receipt.cleared+receipt.deferred)
+                or any(r not in requests for r in receipt.cleared+receipt.deferred)
+                or len(receipt.cleared)+len(receipt.deferred)!=len(requests)
+                or len({r.device_id for r in receipt.cleared+receipt.deferred})!=len(requests)):
+            raise Fault('narrowing or exclusive-address state-cleanup readback not confirmed')
+        self.active = {d.device_id:d for d in remaining}
+        for request in receipt.cleared:self.pending_retirements.pop(request.device_id,None)
+        for request in receipt.deferred:self.pending_retirements[request.device_id]=request
+
+    def _retry_retirements(self):
+        if not self.pending_retirements:return
+        expected=_ordered(self.active.values())
+        requests=tuple(self.pending_retirements[i] for i in sorted(self.pending_retirements))
+        receipt=self.adapter.retry_retirement(expected,requests)
+        self._retirement_receipt(expected,requests,receipt)
 
     def _narrow(self, identifiers, reason):
         identifiers = set(identifiers) & set(self.active)
@@ -280,9 +303,7 @@ class Coordinator:
         remaining = _ordered(d for i, d in self.active.items() if i not in identifiers)
         requests = tuple(_request(self.active[i]) for i in sorted(identifiers))
         receipt = self.adapter.narrow(expected, remaining, requests)
-        if type(receipt) is not NarrowReceipt or receipt != NarrowReceipt(remaining, requests):
-            raise Fault('narrowing or exclusive-address state-cleanup readback not confirmed')
-        self.active = {d.device_id: d for d in remaining}
+        self._retirement_receipt(remaining,requests,receipt)
 
     def _stop(self, reason):
         confirmed = False
@@ -446,6 +467,7 @@ class Coordinator:
         if self.adapter.guard_all('fleet_host_policy_transition') is not True:
             raise Fault('fleet_transition_guard_unverified')
         self.active = {}
+        self.pending_retirements.clear()
         self.state = 'GUARDED'
         # A MOBIKE update briefly uses outbound DROP policies and can reinstall
         # old SPD entries with new IDs before its replacement CHILD is ready.
@@ -510,7 +532,7 @@ class Coordinator:
         eligible, routes = {}, {}
         for ident in sorted(byid):
             d = byid[ident]
-            if not d.ready:
+            if not d.ready or ident in self.pending_retirements:
                 continue
             handover = self.handovers.get(ident)
             if handover is not None and not handover.fresh_child(d.generation):
@@ -539,6 +561,7 @@ class Coordinator:
                 if self.adapter.guard_all('initial closed baseline') is not True:
                     raise Fault('initial global closure not confirmed')
                 self.state = 'GUARDED'
+            self._retry_retirements()
             first = self._round()
             if first is None:
                 return self.last_result
@@ -583,7 +606,8 @@ class Coordinator:
             self.guarded_proofs = {d.device_id: d for d in post[1].devices
                 if d.device_id in self.guarded_proofs and d.device_id not in self.active and d.hosts}
             self.state = 'ACTIVE' if self.active else 'GUARDED'
-            self.last_result = Result(self.state, tuple(sorted(self.active)), self.pending_count)
+            self.last_result = Result(self.state, tuple(sorted(self.active)), self.pending_count,
+                                      'fleet_retirement_pending' if self.pending_retirements else '')
             self.transient_pauses = 0
             return self.last_result
         except Exception as error:
@@ -599,7 +623,8 @@ class Coordinator:
                 try:closed=self.adapter.guard_all('fleet_transient_observation') is True
                 except Exception:closed=False
                 if closed:
-                    self.active={};self.state='GUARDED';self.transient_pauses+=1
+                    self.active={};self.pending_retirements.clear()
+                    self.state='GUARDED';self.transient_pauses+=1
                     self.last_result=Result('GUARDED',(),self.pending_count,
                                             'fleet_transient_observation',True)
                     return self.last_result

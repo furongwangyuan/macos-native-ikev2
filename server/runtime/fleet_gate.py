@@ -5,7 +5,7 @@ sets before all A-address states are cleared, including any A old/new generation
 This preserves unrelated B addresses in the command selectors; actual traffic
 continuity and macOS NAT direction semantics still need native observation.
 """
-import copy,ipaddress,re
+import copy,ipaddress,re,subprocess
 import native_support as s
 import native_gate as native
 import fleet_policy as policy
@@ -50,12 +50,20 @@ def no_address_state(text,addresses):
                 or not re.fullmatch(r'(?:[A-Z][A-Z0-9_]*|[0-9]+)(?::(?:[A-Z][A-Z0-9_]*|[0-9]+))?',parts[-1])):
             raise s.Refused('fleet_state_line_unknown')
         body=parts[2:-1];arrows=[i for i,x in enumerate(body) if x in ('->','<-')]
-        if len(arrows)!=1 or arrows[0] not in (1,2) or len(body)-arrows[0]-1 not in (1,2):
+        if (len(body)==5 and arrows==[1,3] and body[1]==body[3]):
+            # Darwin also prints NAT as original -> translated -> peer (or
+            # the reverse arrow form). Every endpoint, including the original
+            # private VIP, participates in the exact address absence check.
+            tokens=body[::2]
+        elif len(arrows)==1 and arrows[0] in (1,2) and len(body)-arrows[0]-1 in (1,2):
+            tokens=[]
+            for side in (body[:arrows[0]],body[arrows[0]+1:]):
+                if len(side)==2 and not (side[1].startswith('(') and side[1].endswith(')')):
+                    raise s.Refused('fleet_state_nat_view_unknown')
+                tokens.extend(side)
+        else:
             raise s.Refused('fleet_state_line_unknown')
-        for side in (body[:arrows[0]],body[arrows[0]+1:]):
-            if len(side)==2 and not (side[1].startswith('(') and side[1].endswith(')')):
-                raise s.Refused('fleet_state_nat_view_unknown')
-            for token in side:found.add(_endpoint(token))
+        for token in tokens:found.add(_endpoint(token))
     return not (found & {ipaddress.ip_address(a) for a in addresses})
 
 
@@ -105,8 +113,30 @@ class FleetGate:
         gate.state['mode']='active';self.state['fleet_active']=[session.encode_device(d) for d in proposed]
         self.state['gate_intent']['phase']='applied';self.owner.save()
         if not gate.verify_active():raise s.Refused('fleet_active_postreadback')
+    def _states_clear(self,addresses):
+        # Only this fixed read is recoverably unavailable. A false result is
+        # never an absence receipt; the already-narrowed device stays barred.
+        args=[native.PF,'-ss']
+        try:output=s.run(args,timeout=2,check=False)
+        except subprocess.TimeoutExpired as error:
+            if (type(error)is subprocess.TimeoutExpired and error.cmd==args
+                    and type(error.timeout)in (int,float) and 0<error.timeout<=2):return False
+            raise
+        except UnicodeDecodeError:return False
+        except s.Refused as error:
+            if type(error)is s.Refused and error.args==('command_output_limit',):return False
+            raise
+        if (output.returncode!=0 or output.stderr.strip() not in
+                ('','No ALTQ support in kernel\nALTQ related functions disabled')):return False
+        try:return no_address_state(output.stdout,addresses)
+        except s.Refused as error:
+            if type(error)is s.Refused and error.args in tuple((code,) for code in (
+                    'fleet_state_output_unknown','fleet_state_line_unknown',
+                    'fleet_state_nat_view_unknown','fleet_state_endpoint_unknown',
+                    'fleet_state_port_unknown','fleet_state_scope_unknown')):return False
+            raise
     def retire(self,requests):
-        if not requests:return
+        if not requests:return True
         registry={d['device_id']:d for d in self.state['fleet']['registry']['devices']}
         current={d.device_id for d in self.current()};ids=[];addresses=[]
         for req in requests:
@@ -119,9 +149,10 @@ class FleetGate:
         for address in addresses:
             anynet='0.0.0.0/0' if ipaddress.ip_address(address).version==4 else '::/0'
             s.run([native.PF,'-k',address]);s.run([native.PF,'-k',anynet,'-k',address])
-        output=s.run([native.PF,'-ss'])
-        if (output.stderr.strip() not in ('','No ALTQ support in kernel\nALTQ related functions disabled')
-                or not no_address_state(output.stdout,addresses)):
-            raise s.Refused('fleet_address_states_remain_or_unknown')
+        clear=self._states_clear(addresses)
+        # Rule/table/forwarding ownership failures remain separate hard errors.
+        # An unknown state-display row must not hide a changed shared gate.
         if not self.gate.verify_active():raise s.Refused('fleet_narrow_gate_changed')
+        if not clear:return False
         self.state['fleet_closing']['phase']='verified';self.owner.save()
+        return True
