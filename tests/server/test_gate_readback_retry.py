@@ -124,6 +124,7 @@ class Checks(unittest.TestCase):
 
     def test_unverified_cleanup_prevents_retry(self):
         deps = Deps([core.GateReadbackUnavailable('gate_readback_unavailable')]); deps.clean = False
+        deps.wait=lambda seconds:setattr(deps,'stop',True)
         store = self.run_case(deps)
         self.assertEqual((store.value['phase'], store.value['reason']), ('ATTENTION', 'recovery_not_proven'))
         self.assertEqual(deps.calls.count('serve'), 1)
@@ -165,6 +166,7 @@ class Checks(unittest.TestCase):
 
     def test_resume_cooldown_failed_recovery_cannot_retry(self):
         deps=Deps([None]);deps.now=200;deps.recover=lambda expected_owner=False: False
+        deps.wait=lambda seconds:setattr(deps,'stop',True)
         store=Store()
         store.value=dict(version=1,phase='BACKOFF',boot='current-boot',fingerprint='a'*64,
                          attempts=[100,105,120],next_due=220,reason='gate_readback_unavailable',updated=180)

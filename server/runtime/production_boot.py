@@ -85,10 +85,9 @@ def finish(io, store, record, clock):
     original, context = closed_readback(io, store, record)
     files = production.unpack(context)
     old_service = files['service-state']
-    old_state = valid_state(s.json_value(old_service))
-    # An unknown-failure latch is not made into an automatic restart by reboot.
-    if old_state['phase'] == 'ATTENTION':
-        raise r.Refused('production_boot_prior_attention')
+    # A previous service error is historical after the exact native state has
+    # been restored and re-read above. It must not permanently veto recovery.
+    valid_state(s.json_value(old_service))
     raw_record = s.read(native.RECORD)
     if r.validate(s.json_value(raw_record)) != record:
         raise r.Refused('production_boot_record_changed')

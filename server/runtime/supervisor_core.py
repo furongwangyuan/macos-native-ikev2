@@ -77,7 +77,7 @@ class Supervisor:
     """
     def __init__(self,deps,store,clock):
         self.d,self.store,self.clock=deps,store,clock
-        self.state=None;self.owner=None
+        self.state=None;self.owner=None;self.close_calls=0;self.state_seen=False
     def failure(self,error):
         # Diagnostics are optional and must never replace phase/cleanup work.
         try:
@@ -87,19 +87,27 @@ class Supervisor:
     def write(self,phase,reason,**fields):
         self.state.update(phase=phase,reason=reason,updated=self.clock(),**fields)
         valid_state(self.state);self.store.save(self.state)
+        self.state_seen=True
         # The durable lifecycle remains mandatory. Its auxiliary event log must
         # not close a healthy owner when only logging is unavailable.
         try:self.d.event(phase,reason,len(self.state['attempts']))
         except Exception as error:self.failure(error)
     def attention(self,reason):
-        # Latch BEFORE cleanup: a crash while closing must never turn an unknown
-        # failure into an authorized automatic restart on the next invocation.
+        # Record BEFORE cleanup: neither this loop nor a later invocation may
+        # create another owner before complete recovery and fresh authorization.
         self.write('ATTENTION',reason,next_due=0)
-        return 0 # Successful exit tells the fixed launchd job not to respawn.
+        return 0 # The outer loop waits and rechecks; this does not authorize a start.
     def close(self):
-        if self.owner is None:return self.d.recover(expected_owner=False)
-        result=self.d.cleanup(self.owner);self.owner=None
-        return result
+        self.close_calls+=1
+        # Keep exact process/dispatcher handles until full cleanup AND fresh
+        # readback succeed. A False result or exception cannot retire ownership.
+        try:
+            result=(self.d.recover(expected_owner=False) if self.owner is None
+                    else self.d.cleanup(self.owner))
+        except Exception as error:
+            self.failure(error);return False
+        if result is True:self.owner=None
+        return result is True
     def reserve_attempt(self):
         now=self.clock()
         if now<self.state['updated']:raise Attention('continuous_clock_regressed')
@@ -128,15 +136,68 @@ class Supervisor:
             if self.d.configuration().fingerprint!=self.state['fingerprint']:
                 raise ConfigurationChanged('configuration_changed')
         return not self.d.stopped()
+    def disabled(self):
+        try:return self.d.configuration().enabled is False
+        except Exception:return False # An unreadable configuration is not an operator stop.
+    def retry_wait(self):
+        now=self.clock();attempts=[] if self.state is None else self.state['attempts']
+        recent=[at for at in attempts if now-at<RETRY_WINDOW]
+        delay=RETRY_DELAYS[min(max(len(recent)-1,0),len(RETRY_DELAYS)-1)]
+        if len(recent)>=MAX_ATTEMPTS:
+            delay=min(delay,max(0,min(recent)+RETRY_WINDOW-now))
+        due=now+delay
+        while self.clock()<due:
+            if self.d.stopped() or self.disabled():return False
+            self.d.wait(min(.5,due-self.clock()))
+        return not self.d.stopped() and not self.disabled()
     def run(self):
+        # ATTENTION describes a closed/unverified owner that needs another
+        # observation, not a permanent service exit. Never manufacture a fresh
+        # state when the saved one is unreadable, and never open before recovery.
+        while True:
+            closes=self.close_calls
+            try:
+                if self.owner is not None and not self.close():
+                    self.attention('recovery_not_proven')
+                else:
+                    result=self._run_cycle()
+                    if self.state is not None and self.state['phase'] in ('STOPPED','DISABLED'):
+                        return result
+            except Exception as error:
+                self.failure(error)
+                if self.state is not None:
+                    try:self.attention('configuration_changed' if isinstance(error,ConfigurationChanged) else 'unknown_failure')
+                    except Exception as write_error:self.failure(write_error)
+                # Startup/load errors can occur before the cycle reaches its
+                # own close path. Try existing recovery once; do not repeat a
+                # failed cleanup immediately or replace its retained owner.
+                if self.close_calls==closes:
+                    try:self.close()
+                    except Exception as close_error:self.failure(close_error)
+            # SIGTERM/disable must release the lifecycle lock even when an
+            # attempted recovery remains unproven. The durable native record
+            # stays intact for the stop/recovery entry that obtains this lock.
+            if self.d.stopped() or self.disabled():return 0
+            # The caller retains this Supervisor if the clock/wait facility
+            # itself fails, using its independent STOP.wait before retrying.
+            if not self.retry_wait():return 0
+    def _run_cycle(self):
+        self.state=None
         previous=self.store.load()
-        if previous is not None:valid_state(previous)
+        if previous is None and self.state_seen:
+            raise Attention('service_state_disappeared')
+        if previous is not None:
+            self.state_seen=True
+            valid_state(previous)
+            self.state=dict(previous)
         boot=self.d.boot()
         try:config=self.d.configuration()
         except Exception as error:
             self.failure(error)
-            self.state=dict(previous) if previous else dict(version=1,phase='DISABLED',boot=boot,
-                fingerprint='0'*64,attempts=[],next_due=0,reason='initial',updated=self.clock())
+            # No valid prior state means there is no configuration fingerprint
+            # to bind. Preserve absence; retry after the configuration is readable.
+            if previous is None:raise
+            self.state=dict(previous)
             expected=self.state['phase'] in ['STARTING','RUNNING','RECOVERING']
             try:self.attention('configuration_changed')
             finally:self.d.recover(expected_owner=expected)
@@ -165,7 +226,8 @@ class Supervisor:
         except Exception as error:
             self.failure(error);restored=False
         if not restored:return self.attention('recovery_not_proven')
-        if phase=='ATTENTION':return self.attention('latched_attention')
+        # A former ATTENTION owner was recovered above; require all current
+        # configuration/activation/preflight checks again before any new start.
         if not config.enabled:
             self.write('DISABLED','disabled',boot=boot,fingerprint=config.fingerprint,attempts=[],next_due=0)
             return 0

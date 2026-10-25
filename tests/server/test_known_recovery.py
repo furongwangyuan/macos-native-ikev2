@@ -92,6 +92,7 @@ class RecoveryCooldown(unittest.TestCase):
                 def fail_cleanup(owner):
                     d.clean=False;return original(owner)
                 d.serve=fail_cleanup
+                d.wait=lambda seconds:setattr(d,'stop',True)
                 store=self.run_case(d)
                 self.assertEqual((store.value['phase'],store.value['reason']),('ATTENTION','recovery_not_proven'))
                 self.assertEqual(d.calls.count('serve'),1)
@@ -109,7 +110,9 @@ class RecoveryCooldown(unittest.TestCase):
     def test_resumed_wait_requires_fresh_recovery(self):
         for _,reason in KNOWN:
             with self.subTest(reason=reason):
-                d=Deps([None]);d.now=200;d.clean=False;store=self.run_case(d,saved(reason))
+                d=Deps([None]);d.now=200;d.clean=False
+                d.wait=lambda seconds:setattr(d,'stop',True)
+                store=self.run_case(d,saved(reason))
                 self.assertEqual(store.value['reason'],'recovery_not_proven');self.assertEqual(d.starts,[])
 
     def test_wait_honors_manual_stop_and_configuration_changes(self):
@@ -122,6 +125,7 @@ class RecoveryCooldown(unittest.TestCase):
                         if d.now>=225:
                             if change=='stop':d.stop=True
                             else:d.config=core.Configuration(True,'b'*64)
+                        if change=='configuration' and d.now>=226:d.stop=True
                     d.wait=update;store=self.run_case(d,saved(reason))
                     self.assertEqual(d.starts,[])
                     self.assertEqual(store.value['reason'],'manual_stop' if change=='stop' else 'configuration_changed')
@@ -137,26 +141,32 @@ class RecoveryCooldown(unittest.TestCase):
                 self.assertEqual((store.value['phase'],store.value['reason']),('STOPPED','manual_stop'))
                 self.assertEqual(d.starts,[100,105,120]);self.assertEqual(d.calls.count('cleanup'),3)
 
-    def test_unknown_or_subclass_failure_cannot_use_cooldown(self):
+    def test_unknown_or_subclass_failure_requires_full_fresh_recovery(self):
         class Derived(core.OwnedDaemonExit): pass
         for error in (RuntimeError('owned_charon_exited'),Derived('owned_charon_exited')):
             with self.subTest(error=type(error).__name__):
-                d=Deps([error]);store=self.run_case(d)
-                self.assertEqual(store.value['reason'],'unknown_failure');self.assertEqual(len(d.starts),1)
+                d=Deps([error,None]);store=self.run_case(d)
+                self.assertTrue(any(x['reason']=='unknown_failure' for x in store.history))
+                self.assertEqual(len(d.starts),2);self.assertEqual(d.calls.count('cleanup'),2)
                 self.assertFalse(any(x['phase']=='BACKOFF' for x in store.history))
 
-    def test_setup_failure_does_not_gain_serve_recovery_authority(self):
-        d=Deps([])
-        def setup(_):raise core.OwnedDaemonExit('setup_failed')
+    def test_setup_failure_recovers_before_fresh_start(self):
+        d=Deps([None]);attempt=[0]
+        def setup(_):
+            attempt[0]+=1
+            if attempt[0]==1:raise core.OwnedDaemonExit('setup_failed')
         d.setup=setup;store=self.run_case(d)
-        self.assertEqual(store.value['reason'],'unknown_failure');self.assertEqual(len(d.starts),1)
+        self.assertTrue(any(x['reason']=='unknown_failure' for x in store.history))
+        self.assertEqual(len(d.starts),2);self.assertEqual(d.calls.count('cleanup'),2)
 
-    def test_unknown_backoff_and_cross_boot_remain_latched(self):
-        d=Deps([]);d.now=200;store=self.run_case(d,saved('unknown_failure'))
-        self.assertEqual(store.value['reason'],'retry_budget_exhausted');self.assertEqual(d.starts,[])
+    def test_unknown_backoff_keeps_budget_and_cross_boot_waits(self):
+        d=Deps([None]);d.now=200;store=self.run_case(d,saved('unknown_failure'))
+        self.assertTrue(any(x['reason']=='retry_budget_exhausted' for x in store.history))
+        self.assertEqual(d.starts,[1000])
         for _,reason in KNOWN:
             with self.subTest(reason=reason):
-                d=Deps([]);d.now=200;store=self.run_case(d,saved(reason,boot='old-boot'))
+                d=Deps([]);d.now=200;d.wait=lambda seconds:setattr(d,'stop',True)
+                store=self.run_case(d,saved(reason,boot='old-boot'))
                 self.assertEqual(store.value['reason'],'cross_boot_unfinished');self.assertEqual(d.starts,[])
 
     def test_optional_event_log_failure_does_not_stop_healthy_run(self):

@@ -169,7 +169,7 @@ def validate(native, raw, *, permission_closed=False):
     if (start['run'] != mark['run_id'] or digest(files['intent']) != mark['intent_sha256']
             or start['boot'] != native.get('boot') or state['boot'] != start['boot']
             or start['configuration_sha256'] != configuration or state['fingerprint'] != configuration
-            or state['phase'] not in ('PREFLIGHT', 'STARTING', 'RUNNING', 'RECOVERING', 'STOPPED', 'BACKOFF')):
+            or state['phase'] not in ('PREFLIGHT', 'STARTING', 'RUNNING', 'RECOVERING', 'STOPPED', 'BACKOFF', 'ATTENTION')):
         raise Refused('production_source_binding')
     return dict(kind=KIND, boot=start['boot'], configuration_sha256=configuration, run=start['run'])
 

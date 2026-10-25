@@ -49,7 +49,7 @@ NATIVE_BINARIES=(s.CHARON,s.SWAN,*tuple(NATIVE_PREFIX/'lib/ipsec'/name for name 
 # Exact reviewed literals only. Shape-compatible exception messages are not codes.
 FAILURE_CODES=frozenset({
     'configuration_changed','source_or_native_code_changed','unknown_service_configuration',
-    'unknown_native_configuration','native_data_permission_missing','native_ownership_record_missing',
+    'unknown_native_configuration','native_data_permission_missing','native_ownership_record_missing','service_state_disappeared',
     'recovery_job_plist_differs','recovery_job_readback_unknown','recovery_job_disabled',
     'fixed_command_failed','fixed_mutation_failed','main_pf_changed','root_baseline_changed',
     'guard_readback_failed','enable_token_unknown_preserve_guard','enable_reference_readback',
@@ -285,7 +285,15 @@ class NativeDependencies:
     def recover(self,expected_owner=False):
         previous=self.store.load()
         if previous is None:
-            if expected_owner:raise Attention('native_ownership_record_missing')
+            # Missing bookkeeping is neither proof of a live owner nor proof
+            # of cleanup. Reuse the complete read-only native baseline check;
+            # never manufacture an ownership/RESTORED receipt to resume.
+            import native_quiescent
+            boot=s.boot()
+            with service_recovery_readback.read_only():
+                observed=native_quiescent.verify(self.assert_held)
+            if (observed['boot']!=boot or s.boot()!=boot or self.store.load() is not None):
+                raise Attention('native_ownership_record_missing')
             return True
         if previous['active'] and previous['boot']!=s.boot():
             recover_only.new_boot_observation(previous,self.store);return False
@@ -389,7 +397,8 @@ class NativeDependencies:
             # protection and ownership checked between attempts. Only these
             # exact I/O failures or bounded event-capacity pressure may use
             # the existing close/readback/backoff
-            # lifecycle; protocol, source and identity failures still latch.
+            # lifecycle. Other failures use the supervisor's full recovery
+            # and fresh authorization path before any new data activation.
             if (type(error)is runtime.ctl.Fault and error.args==('fleet_controller_stopped',)
                     and error.__cause__ is cause and type(cause)is TransientTransportFault
                     and cause.args in (('vici_exchange_timeout',),('vici_exchange_eof',),('vici_exchange_io',),('vici_exchange_capacity',))):
@@ -403,27 +412,63 @@ class NativeDependencies:
                 and self.restored(saved))
 
 
+def retry_failure(deps,error,attempt):
+    # Optional diagnostics must never turn the recovery process into another
+    # failed component. Do not put exception messages or credentials in output.
+    if deps is not None:
+        try:deps.failure(error)
+        except Exception:pass
+    delay=(5,15,60)[min(attempt,2)]
+    try:s.say('service_recovery_wait',retry_seconds=delay)
+    except Exception:pass
+    runtime.STOP.wait(delay)
+
+
+def run_locked(deps,clock):
+    supervisor=Supervisor(deps,ServiceStore(),clock)
+    attempt=0
+    while not runtime.STOP.is_set():
+        try:return supervisor.run()
+        except Exception as error:
+            # Defensive boundary: keep the same owner/Popen references and
+            # the same native locks if an unexpected exception escapes core.
+            retry_failure(deps,error,attempt);attempt+=1
+    # Manual disable must be able to acquire these locks. One final bounded
+    # close attempt leaves the durable journal for recover_only if incomplete.
+    try:supervisor.close()
+    except Exception as error:
+        try:deps.failure(error)
+        except Exception:pass
+    return 0
+
+
 def main():
     if len(sys.argv)!=1:raise Attention('service_takes_no_arguments')
     os.umask(0o077)
-    for path in [s.BASE,s.STATE,s.CONF]:s.trusted(path,0o700)
     for sig in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]:signal.signal(sig,lambda *_:runtime.STOP.set())
-    clock=make_clock();deps=NativeDependencies(clock)
-    try:
-        import boot_native
-        import production_boot
-        boot_native.Native.installed_scope()
-        io=boot_native.Native()
-        with io.locked():
-            deps.assert_held=io.held
-            production_boot.recover_locked(io,clock)
-            return Supervisor(deps,ServiceStore(),clock).run()
-    except BlockingIOError:return 75 # Retry after the independent recovery owner releases the locks.
-    except Exception as error:
-        deps.failure(error)
-        # Do not turn an unknown validation/disk error into a launchd restart
-        # loop. The independent recover-only job can close a remaining owner.
-        s.say('service_attention',data_activation_not_retried=True);return 0
+    clock=None;deps=None;attempt=0
+    while not runtime.STOP.is_set():
+        try:
+            for path in [s.BASE,s.STATE,s.CONF]:s.trusted(path,0o700)
+            if clock is None:clock=make_clock()
+            if deps is None:deps=NativeDependencies(clock)
+            import boot_native
+            import production_boot
+            boot_native.Native.installed_scope()
+            # A failed boot restore can bind a writer. A fresh Native for each
+            # attempt resumes from its journal without reusing that binding.
+            io=boot_native.Native()
+            with io.locked():
+                deps.assert_held=io.held
+                production_boot.recover_locked(io,clock)
+                return run_locked(deps,clock)
+        except BlockingIOError:
+            runtime.STOP.wait(5) # Another recovery owner currently holds locks.
+        except Exception as error:
+            retry_failure(deps,error,attempt);attempt+=1
+        finally:
+            if deps is not None:deps.assert_held=None
+    return 0
 
 
 if __name__=='__main__':sys.exit(main())

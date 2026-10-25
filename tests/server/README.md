@@ -33,6 +33,15 @@ timeout leaves the other device forwarding through fresh checks.
 close, the existing daemon and IKE sessions remain, and a full fresh admission
 is required before reopening. Persistent failures fall back to full recovery.
 
+`test_persistent_recovery.py` checks that unknown errors, failed startup,
+configuration/state read failures and incomplete cleanup leave recovery alive.
+It exercises exact owner retention, bounded starts, recovery after a condition
+clears, and interruptible manual stop. `ATTENTION` is a retry state, not a
+permanent shutdown. Required durable-state failure still prevents data admission.
+`test_entry_recovery.py` checks fresh boot writer instances, retained supervisor
+instances under the same lock, diagnostic failures, manual stop, and complete
+read-only native checks when no journal exists.
+
 These tests verify Python control-plane behavior. They do not validate real
 macOS PF/IPsec behavior, actual concurrent iPhones, leak prevention on a physical
 iPhone, China–Malaysia paths, native build compatibility, or throughput.
