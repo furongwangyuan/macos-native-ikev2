@@ -69,7 +69,7 @@ class FleetOwner(ServiceOwner):
         return value
     def observe(self,timeout):
         # Closed inherited setup only needs a no-IKE assertion. Data controllers
-        # use NativeFleetAdapter directly and never fall back to text/device01.
+        # use NativeFleetAdapter directly and never fall back to text/test02.
         parsed=self.fleet_adapter.read_fleet(timeout)
         if self.data_mode:raise s.Refused('single_snapshot_interface_disabled_for_fleet')
         absent=not parsed.unattributed_pending_count and all(x.kind=='absent' for x in parsed.snapshots.values())
@@ -99,9 +99,10 @@ class FleetOwner(ServiceOwner):
         if service.read_configuration().fingerprint!=self.fingerprint:
             raise ConfigurationChanged('configuration_changed')
         context=self.fleet_adapter._context()
-        expected=(self.alf_transaction.expected() if self.alf_transaction is not None
-                  else self.session['alf_before'])
-        if runtime.alf.snapshot()!=expected:raise runtime.ctl.Fault('alf_changed_preserving_external')
+        current_alf=runtime.alf.snapshot()
+        matches=(runtime.alf_transaction.active_matches(self.alf_transaction.record,current_alf)
+                 if self.alf_transaction is not None else current_alf==self.session['alf_before'])
+        if not matches:raise runtime.ctl.Fault('alf_vpn_rule_changed')
         if self.session['crl']['next']<=time.time():raise runtime.ctl.Fault('crl_expired')
         if s.digest(s.read(runtime.crl_gate.CRL))!=self.session['crl']['sha256']:
             raise runtime.ctl.Fault('crl_changed')

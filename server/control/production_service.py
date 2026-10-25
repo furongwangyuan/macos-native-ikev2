@@ -114,10 +114,9 @@ def fresh_locked(service, io):
     old = boot_record.bind(record, original, context)
     if s.json_value(context).get('kind') != 'production-service-v1' or io.implementation() != record['implementation_sha256']:
         raise Refused('production_boot_closed_source_changed')
-    production_source.verify_current_resources(context)
+    production_source.verify_current_resources(context, recovery=True)
     io.closed_kernel()
-    if io.alf() != old['alf_before']:
-        raise Refused('production_boot_alf_not_restored')
+    boot_record.alf_finished(old, io.alf(), record['completed'])
     pf = io.pf(old)
     if pf['sha256'] != old['pf']['before_sha'] or pf['root'] != 'baseline' or pf['anchor'] != dict(filters=[], nat=[]):
         raise Refused('production_boot_pf_not_restored')

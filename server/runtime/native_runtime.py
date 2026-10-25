@@ -72,11 +72,12 @@ def configured():
 
 def alf_gate(value,data):
     if data:
-        # Opening is an owned, journaled transaction after native protection and
-        # authenticated daemon preparation, never a pre-existing open baseline.
+        # New sessions preserve the host's enabled firewall mode and unrelated
+        # app permissions; only VPN-specific allowances are owned.
         alf_transaction.snapshot(value,baseline=True)
-    elif (value['global_state'],value['blockall'],value['apps'].get(str(s.CHARON)))!=(2,True,False):
-        raise s.Refused('closed_test_requires_existing_blockall_and_charon_deny')
+    else:
+        # A stopped VPN needs its own process blocked, not all host services.
+        alf_transaction.snapshot(value,baseline=True)
 
 
 def native_socket():
@@ -289,9 +290,10 @@ charon {
             proc=self.owned_process()
             if proc is None:raise ctl.Fault('charon_process_absent')
             if proc['path']!=str(s.CHARON):raise ctl.Fault('charon_exited_or_changed')
-            expected=(self.alf_transaction.expected() if self.alf_transaction is not None
-                      else self.session['alf_before'])
-            if alf.snapshot()!=expected:raise ctl.Fault('alf_changed_preserving_external')
+            current_alf=alf.snapshot()
+            matches=(alf_transaction.active_matches(self.alf_transaction.record,current_alf)
+                     if self.alf_transaction is not None else current_alf==self.session['alf_before'])
+            if not matches:raise ctl.Fault('alf_vpn_rule_changed')
             local=network.uplink(external=False)
             if self.session['crl']['next']<=time.time():raise ctl.Fault('crl_expired')
             if s.digest(s.read(crl_gate.CRL))!=self.session['crl']['sha256']:raise ctl.Fault('crl_changed')
@@ -401,7 +403,9 @@ charon {
         try:
             current_alf=alf.snapshot()
             self.session['alf_external_changes_preserved']=current_alf!=self.session['alf_before']
-            if current_alf!=self.session['alf_before']:
+            restored=(alf_transaction.restored_matches(self.alf_transaction.record,current_alf)
+                      if self.alf_transaction is not None else current_alf==self.session['alf_before'])
+            if not restored:
                 errors.append('alf_baseline_not_restored' if self.data_mode else 'closed_alf_changed')
         except Exception:errors.append('alf_readback')
         self.session['cleanup_codes']=sorted(set(errors))

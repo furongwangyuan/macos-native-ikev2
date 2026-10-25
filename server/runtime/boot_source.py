@@ -27,6 +27,9 @@ def unpack(raw):
     if value.get('kind')==production.KIND:return production.unpack(raw)
     raise Refused('bounded_context_kind_unknown')
 
-def verify_current_resources(native,raw):return module(native).verify_current_resources(raw)
+def verify_current_resources(native,raw,*,recovery=False):
+    if type(recovery)is not bool:raise Refused('bounded_recovery_mode')
+    if kind(native)=='production':return production.verify_current_resources(raw,recovery=recovery)
+    return module(native).verify_current_resources(raw)
 
 def absent_service():return finite.absent_service()

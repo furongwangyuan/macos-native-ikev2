@@ -68,11 +68,10 @@ def closed_readback(io, store, record):
     if (io.boot() != record['new_boot'] or io.implementation() != record['implementation_sha256']
             or io.configuration() != record['configuration_sha256']):
         raise r.Refused('production_boot_configuration_changed')
-    production.verify_current_resources(context)
     io.closed_kernel()
+    production.verify_current_resources(context,recovery=True)
     r.alf_scope(old, io.alf(), record['completed'])
-    if io.alf() != old['alf_before']:
-        raise r.Refused('production_boot_alf_not_restored')
+    r.alf_finished(old, io.alf(), record['completed'])
     pf = io.pf(old)
     if (pf['sha256'] != old['pf']['before_sha'] or pf['root'] != 'baseline'
             or pf['anchor'] != dict(filters=[], nat=[])):

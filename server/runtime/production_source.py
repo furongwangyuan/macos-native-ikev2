@@ -174,11 +174,17 @@ def validate(native, raw, *, permission_closed=False):
     return dict(kind=KIND, boot=start['boot'], configuration_sha256=configuration, run=start['run'])
 
 
-def verify_current_resources(raw):
+def verify_current_resources(raw, *, recovery=False):
     import service_supervisor as service
     files = unpack(raw)
     start = intent(s.json_value(files['intent']))
-    if (start['code_sha256'] != service.code_fingerprint()
+    # A reboot recovery runs the currently installed, manifest-verified code;
+    # requiring the previous owner to have that same code prevents deployment
+    # of the repair needed to retire its journal. The original hash is retained
+    # as evidence, not permission to launch any old executable or replay IDs.
+    if type(recovery)is not bool:raise Refused('production_recovery_mode')
+    current_code=service.code_fingerprint()
+    if (not recovery and start['code_sha256'] != current_code
             or start['kernel_release'] != os.uname().release or start['machine'] != os.uname().machine):
         raise Refused('production_runtime_changed_since_start')
 

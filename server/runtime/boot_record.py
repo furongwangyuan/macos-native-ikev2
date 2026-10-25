@@ -25,14 +25,22 @@ def sources(native_raw,context_raw,new_boot):
     if type(native_raw)is not bytes or type(context_raw)is not bytes or len(native_raw)>131072 or len(context_raw)>393216:
         raise Refused('original_size_or_type')
     n=s.json_value(native_raw);v=source.validate(n,context_raw)
+    production=v.get('kind')=='production-service-v1'
+    # Cleanup failures describe the previous kernel. A real reboot has already
+    # discarded its processes and SAD/SPD; admit the validated journal so the
+    # caller can prove that fresh state before touching persistent leftovers.
+    interrupted_production=(production and n.get('phase')=='ATTENTION' and n.get('active')is True
+        and type(n.get('cleanup_codes',[]))is list and len(n.get('cleanup_codes',[]))<=32
+        and all(type(code)is str and re.fullmatch('[a-z0-9_]{1,80}',code) for code in n.get('cleanup_codes',[]))
+        and n.get('recovery_result') in (None,'restored','protected-needs-attention','protection-unverified'))
     clean_production=(v.get('kind')=='production-service-v1' and n.get('phase')=='RESTORED'
         and n.get('active')is False and n.get('cleanup_codes')==[] and n.get('recovery_result')=='restored')
     if (type(n)is not dict or set(n)-ROOT_KEYS or type(n.get('version'))is not int or n['version']!=8
             or n.get('profile')!='production-native-fleet-v1' or not(clean_production or n.get('active')is True) or n.get('allow_data')is not True
-            or not(clean_production or n.get('phase') in ALLOWED_PHASES) or type(n.get('boot'))is not str
+            or not(clean_production or interrupted_production or n.get('phase') in ALLOWED_PHASES) or type(n.get('boot'))is not str
             or not n['boot'] or len(n['boot'])>256 or v['boot']!=n['boot']
             or type(new_boot)is not str or not new_boot or len(new_boot)>256 or new_boot==n['boot']
-            or n.get('cleanup_codes',[])!=[] or n.get('recovery_result') not in (None,'restored')):
+            or not interrupted_production and (n.get('cleanup_codes',[])!=[] or n.get('recovery_result') not in (None,'restored'))):
         raise Refused('unsupported_old_boot_session')
     s.session_history(n)
     baseline=n.get('baseline');knobs=n.get('knobs')
@@ -86,8 +94,9 @@ def sources(native_raw,context_raw,new_boot):
             or len(n.get('floors',[]))!=2 or len(n.get('keepers',[]))!=1
             or any(row['status']!='owned' for row in n['floors']+n['keepers'])):
         raise Refused('running_setup_not_complete')
-    if any(row['phase']=='conflict' for row in n['alf_transaction']['changes']):raise Refused('old_alf_conflict_retained')
-    if n['alf_transaction']['phase']=='attention':raise Refused('old_alf_attention_retained')
+    if not production:
+        if any(row['phase']=='conflict' for row in n['alf_transaction']['changes']):raise Refused('old_alf_conflict_retained')
+        if n['alf_transaction']['phase']=='attention':raise Refused('old_alf_attention_retained')
     p=n.get('pf')
     # First scope requires a known persistent PF receipt, including apply-intent.
     required={'before','before_sha','after_sha','mode','phase','guard','root_before','auxiliary_before','apple_source_sha','enabled_before','references_before'}
@@ -105,6 +114,12 @@ def sources(native_raw,context_raw,new_boot):
 
 def alf_scope(old,current,completed):
     before=old['alf_before'];record=old['alf_transaction'];alf.snapshot(current)
+    if 'production_run' in old:
+        # The current kernel is independently checked closed by the caller.
+        # Foreign app/flag edits and changes to already released rules are not
+        # authority to undo those edits or disable unrelated remote access.
+        if current['global_state'] not in (1,2):raise Refused('alf_disabled_or_unknown')
+        return current
     if (current['stealth']!=before['stealth'] or set(current['apps'])!=set(before['apps'])
             or current['global_state'] not in (1,2)):
         raise Refused('alf_shape_or_external_change')
@@ -124,6 +139,13 @@ def alf_scope(old,current,completed):
         if ('app',path) not in touched and value is not before['apps'][path]:raise Refused('unmodified_alf_app_changed')
     for key in ('builtin','downloaded'):
         if ('flag',key) not in touched and current[key] is not before[key]:raise Refused('unmodified_alf_flag_changed')
+    return current
+
+
+def alf_finished(old,current,completed):
+    alf_scope(old,current,completed)
+    if 'production_run' not in old and current!=old['alf_before']:
+        raise Refused('boot_alf_not_exact_baseline')
     return current
 
 

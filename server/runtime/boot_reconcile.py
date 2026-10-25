@@ -25,8 +25,9 @@ def admit(io,store):
     old,context=r.sources(native_raw,context_raw,current_boot)
     configuration=io.configuration();implementation=io.implementation()
     if configuration!=context['configuration_sha256']:raise r.Refused('configuration_changed_since_finite_source')
+    io.closed_kernel()
     io.context_admission(context_raw)
-    io.closed_kernel();r.alf_scope(old,io.alf(),[]);io.pf(old);files_scope(io,old,[])
+    r.alf_scope(old,io.alf(),[]);io.pf(old);files_scope(io,old,[])
     if (io.originals()!=(native_raw,context_raw) or io.boot()!=current_boot or io.configuration()!=configuration
             or io.implementation()!=implementation):
         raise r.Refused('admission_changed_during_observation')
@@ -57,6 +58,25 @@ def issue(io,store,record,old,key):
 
 def restore_alf(io,store,record):
     old=stable(io,store,record);current=r.alf_scope(old,io.alf(),record['completed'])
+    if 'production_run' in old:
+        # Reboot already closed the native data plane. Never set system-wide
+        # block-all here: SSH/Tailscale may be the only maintenance path.
+        if 'alf-close' not in record['completed']:done(store,record,'alf-close')
+        for index in reversed(range(len(old['alf_transaction']['changes']))):
+            key='alf-'+str(index);row=old['alf_transaction']['changes'][index]
+            old=stable(io,store,record);current=r.alf_scope(old,io.alf(),record['completed'])
+            if key in record['completed']:continue
+            actual=current['apps'].get(row['key']) if row['kind']=='app' else current[row['key']]
+            if row['phase'] in ('pending','restored','conflict') or actual is None:
+                done(store,record,key);continue
+            if actual is row['after']:
+                issue(io,store,record,old,key)
+                current=r.alf_scope(old,io.alf(),record['completed'])
+                after=current['apps'].get(row['key']) if row['kind']=='app' else current[row['key']]
+                if after is not row['before']:raise r.Refused('boot_alf_rule_readback')
+            done(store,record,key)
+        r.alf_finished(old,io.alf(),record['completed'])
+        return
     if 'alf-close' not in record['completed']:
         if current['global_state']!=2:
             issue(io,store,record,old,'alf-close')
@@ -74,12 +94,12 @@ def restore_alf(io,store,record):
             after=current['apps'][row['key']] if row['kind']=='app' else current[row['key']]
             if after is not row['before']:raise r.Refused('boot_alf_rule_readback')
         done(store,record,key)
-    if io.alf()!=old['alf_before']:raise r.Refused('boot_alf_not_exact_baseline')
+    r.alf_finished(old,io.alf(),record['completed'])
 
 
 def restore_pf(io,store,record):
     old=stable(io,store,record)
-    if io.alf()!=old['alf_before']:raise r.Refused('boot_pf_requires_restored_closed_alf')
+    r.alf_finished(old,io.alf(),record['completed'])
     current=io.pf(old)
     if 'pf-source' in record['completed'] and current['sha256']!=old['pf']['before_sha']:
         raise r.Refused('released_pf_source_changed')
@@ -120,7 +140,7 @@ def finish(io,store,record):
     old=stable(io,store,record);r.alf_scope(old,io.alf(),record['completed'])
     required={'alf-close','pf-source','pf-load','pf-clear'}|{'alf-'+str(i) for i in range(len(old['alf_transaction']['changes']))}|{'file-'+k for k in r.FILE_KEYS}
     if set(record['completed'])!=required or record['intent'] is not None:raise r.Refused('boot_steps_incomplete')
-    if io.alf()!=old['alf_before']:raise r.Refused('boot_final_alf')
+    r.alf_finished(old,io.alf(),record['completed'])
     current=io.pf(old)
     if current['sha256']!=old['pf']['before_sha'] or current['root']!='baseline' or current['anchor']!={'filters':[],'nat':[]}:
         raise r.Refused('boot_final_pf')

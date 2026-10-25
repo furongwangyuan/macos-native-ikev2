@@ -63,7 +63,7 @@ FAILURE_CODES=frozenset({
     'fleet_host_policy_transition','fleet_transition_guard_unverified','fleet_transition_snapshot_unchanged',
     'fleet_transition_native_changed','unknown or multiply attributed host policy',
     'current_crl_changed_during_startup','current_loaded_crl_differs','pki_maintenance_incomplete',
-    'alf_changed_preserving_external','crl_expired','crl_changed','active_gate_changed','closed_gate_changed',
+    'alf_changed_preserving_external','alf_vpn_rule_changed','crl_expired','crl_changed','active_gate_changed','closed_gate_changed',
     'bounded_exchange_unavailable','vici_unavailable','vici_exchange_timeout','vici_exchange_eof',
     'vici_exchange_io','vici_exchange_capacity','vici_exchange_socket','vici_exchange_protocol','vici_exchange_deadline_invalid',
     'production_source_binding','production_boot_prior_attention',

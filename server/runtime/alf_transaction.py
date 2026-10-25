@@ -36,8 +36,8 @@ def snapshot(value,baseline=False):
             or any(not app_path(k) or type(v)is not bool for k,v in value['apps'].items())):
         raise InvalidALF('unknown_alf_snapshot')
     if (value['global_state']==2)!=value['blockall']:raise InvalidALF('inconsistent_alf_blockall')
-    if baseline and ((value['global_state'],value['blockall'])!=(2,True) or value['apps'].get(CHARON)is not False):
-        raise InvalidALF('known_closed_alf_baseline_required')
+    if baseline and (value['global_state'] not in (1,2) or value['apps'].get(CHARON)is not False):
+        raise InvalidALF('known_enabled_alf_baseline_required')
     return value
 
 
@@ -46,17 +46,25 @@ def probe_mode(value):
     return value
 
 
-def plan(before,mode='off'):
+def plan(before,mode='off',version=3):
     snapshot(before,True)
     probe_mode(mode)
-    if PROBE in before['apps'] and before['apps'][PROBE]is not False:
+    if type(version)is not int or version not in (2,3):raise InvalidALF('unknown_alf_plan_version')
+    if version==2 and (before['global_state'],before['blockall'])!=(2,True):
+        raise InvalidALF('legacy_alf_requires_blockall_baseline')
+    if version==2 and PROBE in before['apps'] and before['apps'][PROBE]is not False:
         raise InvalidALF('probe_baseline_must_remain_blocked')
     if mode!='off' and before['apps'].get(PROBE)is not False:
         raise InvalidALF('probe_requires_preinstalled_blocked_baseline')
-    changes=[dict(kind='flag',key=key,before=True,after=False,phase='pending')
-        for key in FLAGS if before[key]]
-    changes.extend(dict(kind='app',key=key,before=True,after=False,phase='pending')
-        for key,value in sorted(before['apps'].items()) if value)
+    # Version 2 records retain their historical plan for recovery only. New
+    # sessions own VPN rules, never SSH, screen sharing, other apps or signed
+    # software policy. PF remains responsible for VPN forwarding isolation.
+    changes=[]
+    if version==2:
+        changes=[dict(kind='flag',key=key,before=True,after=False,phase='pending')
+            for key in FLAGS if before[key]]
+        changes.extend(dict(kind='app',key=key,before=True,after=False,phase='pending')
+            for key,value in sorted(before['apps'].items()) if value)
     changes.append(dict(kind='app',key=CHARON,before=False,after=True,phase='pending'))
     if mode!='off':changes.append(dict(kind='app',key=PROBE,before=False,after=True,phase='pending'))
     return changes
@@ -69,18 +77,18 @@ def argv_for(row,restore=False):
 
 
 def new(before,probe_mode='off'):
-    value=dict(version=2,probe_mode=probe_mode,phase='planned',before=copy.deepcopy(before),changes=plan(before,probe_mode),intent=None)
+    value=dict(version=3,probe_mode=probe_mode,phase='planned',before=copy.deepcopy(before),changes=plan(before,probe_mode),intent=None)
     validate(value,before);return value
 
 
 def validate(record,before):
     if (type(record)is not dict or set(record)!={'version','probe_mode','phase','before','changes','intent'}
-            or type(record['version'])is not int or record['version']!=2 or record['phase'] not in PHASES
+            or type(record['version'])is not int or record['version'] not in (2,3) or record['phase'] not in PHASES
             or record['before']!=before or type(record['changes'])is not list):
         raise InvalidALF('unknown_alf_transaction')
     snapshot(record['before'],True);snapshot(before,True)
     if len(json.dumps(record,ensure_ascii=True,allow_nan=False).encode())>49152:raise InvalidALF('alf_journal_limit')
-    expected=plan(before,record['probe_mode'])
+    expected=plan(before,record['probe_mode'],record['version'])
     if len(expected)!=len(record['changes']):raise InvalidALF('alf_plan_count_changed')
     for actual,wanted in zip(record['changes'],expected):
         if (type(actual)is not dict or set(actual)!=set(wanted) or actual['phase'] not in ROW_PHASES
@@ -101,7 +109,8 @@ def validate(record,before):
                     or record['phase']!=('preparing' if purpose=='apply' else 'restoring')):
                 raise InvalidALF('alf_intent_scope_changed')
         elif purpose in ('open','close'):
-            if (index is not None or intent['argv']!=[ALF,'--setblockall','off' if purpose=='open' else 'on']
+            target=False if purpose=='open' else before['blockall']
+            if (index is not None or intent['argv']!=[ALF,'--setblockall','on' if target else 'off']
                     or record['phase']!=('open-intent' if purpose=='open' else 'closing')):
                 raise InvalidALF('alf_blockall_intent_changed')
         else:raise InvalidALF('unknown_alf_purpose')
@@ -112,6 +121,39 @@ def validate(record,before):
     if record['phase']=='restored' and (intent is not None or any(r['phase'] not in ('pending','restored') for r in record['changes'])):
         raise InvalidALF('alf_restoration_incomplete')
     return record
+
+
+
+def scoped_matches(record,current,expected):
+    """Compare the transaction's fields, leaving unrelated ALF changes alone."""
+    validate(record,record['before']);snapshot(current);snapshot(expected)
+    if (current['global_state'],current['blockall'])!=(expected['global_state'],expected['blockall']):return False
+    for row in record['changes']:
+        if row['kind']=='app':
+            if current['apps'].get(row['key']) is not expected['apps'].get(row['key']):return False
+        elif current[row['key']] is not expected[row['key']]:return False
+    return True
+
+
+def active_matches(record,current):
+    """Availability of IKE is independent of other apps' firewall settings."""
+    validate(record,record['before']);snapshot(current)
+    if record['phase'] not in ('prepared','open'):return False
+    mode=(record['before']['global_state'],record['before']['blockall']) if record['phase']=='prepared' else (1,False)
+    if (current['global_state'],current['blockall'])!=mode:return False
+    if current['apps'].get(CHARON)is not True:return False
+    return record['probe_mode']=='off' or current['apps'].get(PROBE)is True
+
+
+def restored_matches(record,current):
+    """Owned effects restored; an unrelated app edit is not a failed cleanup."""
+    validate(record,record['before']);snapshot(current)
+    expected=copy.deepcopy(record['before'])
+    # Normal-firewall v3 sessions never touched block-all; later administrator
+    # changes to global mode remain theirs, including disabling the firewall.
+    if record['version']==3 and not record['before']['blockall']:
+        expected.update(global_state=current['global_state'],blockall=current['blockall'])
+    return scoped_matches(record,current,expected)
 
 
 def validate_session(session):
@@ -157,7 +199,8 @@ class Transaction:
         if opened is None:
             if record['phase'] not in ('prepared','open'):raise InvalidALF('alf_not_ready_for_local_check')
             opened=record['phase']=='open'
-        value.update(global_state=1 if opened else 2,blockall=not opened)
+        value.update(global_state=1 if opened else record['before']['global_state'],
+                     blockall=False if opened else record['before']['blockall'])
         return value
     def _intent(self,purpose,index,argv):
         record=self.record
@@ -168,35 +211,44 @@ class Transaction:
         self.run(argv,timeout=3)
     def prepare(self):
         record=self.record
-        if record['phase']!='planned' or self.observe()!=record['before']:raise InvalidALF('alf_baseline_changed')
+        if record['phase']!='planned' or not scoped_matches(record,self.observe(),record['before']):raise InvalidALF('alf_baseline_changed')
         current=copy.deepcopy(record['before'])
         for index,row in enumerate(record['changes']):
             self._intent('apply',index,argv_for(row))
             if row['kind']=='app':current['apps'][row['key']]=row['after']
             else:current[row['key']]=row['after']
-            if self.observe()!=current:raise InvalidALF('alf_preparation_readback_failed')
+            if not scoped_matches(record,self.observe(),current):raise InvalidALF('alf_preparation_readback_failed')
             row['phase']='applied';record['intent']=None;self.save()
         record['phase']='prepared';self.save()
     def open(self):
         record=self.record
-        if record['phase']!='prepared' or self.observe()!=self.expected(False):raise InvalidALF('alf_prepared_state_changed')
-        self._intent('open',None,[ALF,'--setblockall','off'])
-        if self.observe()!=self.expected(True):raise InvalidALF('alf_open_readback_failed')
+        if record['phase']!='prepared' or not scoped_matches(record,self.observe(),self.expected(False)):raise InvalidALF('alf_prepared_state_changed')
+        if record['before']['blockall']:
+            self._intent('open',None,[ALF,'--setblockall','off'])
+        if not scoped_matches(record,self.observe(),self.expected(True)):raise InvalidALF('alf_open_readback_failed')
         record['phase']='open';record['intent']=None;self.save()
     def close(self):
         record=self.record
         if record['phase']=='restored':
-            if self.observe()!=record['before']:raise InvalidALF('restored_alf_changed')
+            if not restored_matches(record,self.observe()):raise InvalidALF('restored_alf_changed')
             return
-        self._intent('close',None,[ALF,'--setblockall','on'])
-        if self.firewall()!=(2,True):raise InvalidALF('alf_close_unverified')
+        baseline=(record['before']['global_state'],record['before']['blockall'])
+        current=self.firewall()
+        if current not in ((0,False),(1,False),(2,True)):raise InvalidALF('alf_close_state_unknown')
+        global_owned=record['version']==2 or record['before']['blockall']
+        if global_owned and current!=baseline:
+            if current!=(1,False):raise InvalidALF('alf_global_changed_preserving_external')
+            self._intent('close',None,[ALF,'--setblockall','on'])
+        if global_owned and self.firewall()!=baseline:raise InvalidALF('alf_close_unverified')
         record['phase']='closed';record['intent']=None;self.save()
     def restore(self):
         record=self.record
         if record['phase']=='restored':
-            if self.observe()!=record['before']:raise InvalidALF('restored_alf_changed')
+            if not restored_matches(record,self.observe()):raise InvalidALF('restored_alf_changed')
             return
-        if record['phase']!='closed' or self.firewall()!=(2,True):raise InvalidALF('alf_restore_requires_closed')
+        baseline=(record['before']['global_state'],record['before']['blockall'])
+        global_owned=record['version']==2 or record['before']['blockall']
+        if record['phase']!='closed' or (global_owned and self.firewall()!=baseline):raise InvalidALF('alf_restore_requires_closed')
         errors=[]
         for index in reversed(range(len(record['changes']))):
             row=record['changes'][index]
@@ -205,7 +257,7 @@ class Transaction:
                 # A matching later value does not re-establish lost ownership.
                 errors.append(index);continue
             current=snapshot(self.observe())
-            if (current['global_state'],current['blockall'])!=(2,True):raise InvalidALF('alf_reopened_during_restore')
+            if global_owned and (current['global_state'],current['blockall'])!=baseline:raise InvalidALF('alf_changed_during_restore')
             actual=current['apps'].get(row['key']) if row['kind']=='app' else current[row['key']]
             if actual is row['before']:
                 row['phase']='restored';record['intent']=None;self.save();continue
@@ -214,9 +266,9 @@ class Transaction:
             self._intent('restore',index,argv_for(row,True))
             current=snapshot(self.observe())
             actual=current['apps'].get(row['key']) if row['kind']=='app' else current[row['key']]
-            if (current['global_state'],current['blockall'])!=(2,True) or actual is not row['before']:
+            if (global_owned and (current['global_state'],current['blockall'])!=baseline) or actual is not row['before']:
                 raise InvalidALF('alf_restore_readback_failed')
             row['phase']='restored';record['intent']=None;self.save()
-        exact=self.observe()==record['before']
+        exact=restored_matches(record,self.observe())
         record['phase']='restored' if exact and not errors else 'attention';record['intent']=None;self.save()
         if not exact or errors:raise InvalidALF('alf_external_changes_preserved_not_restored')

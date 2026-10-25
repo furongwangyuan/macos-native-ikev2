@@ -74,7 +74,9 @@ class Native:
         import boot_source as source
         value=s.json_value(s.read(s.STATE/'native-session.json'))
         source.validate(value,context_raw)
-        source.verify_current_resources(value,context_raw)
+        if value.get('boot')==self.boot():raise Refused('boot_admission_requires_new_kernel')
+        self.closed_kernel()
+        source.verify_current_resources(value,context_raw,recovery=True)
     def closed_kernel(self):
         self.held();values=s.values()
         if any(values[k]!=0 for k in ('net.inet.ip.forwarding','net.inet6.ip6.forwarding')):

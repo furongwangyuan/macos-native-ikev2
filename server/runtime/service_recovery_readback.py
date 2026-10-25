@@ -35,7 +35,10 @@ def verify(store,expected):
             raise s.Refused('restoration_record_incomplete')
         if s.values()!={k:before['baseline'][k] for k in s.SYS}:raise s.Refused('restoration_sysctl')
         if int(s.run(['/usr/sbin/sysctl','-n',s.ESP]).stdout)!=before['baseline'][s.ESP]:raise s.Refused('restoration_esp')
-        if (runtime.alf.snapshot()!=before['alf_before'] or not s.sad_empty()
+        current_alf = runtime.alf.snapshot()
+        alf_restored = (runtime.alf_transaction.restored_matches(before['alf_transaction'], current_alf)
+                        if before.get('alf_transaction') is not None else current_alf == before['alf_before'])
+        if (not alf_restored or not s.sad_empty()
                 or runtime.policies.read_spd()[0]):raise s.Refused('restoration_native_or_alf')
         if s.run(['/usr/bin/pgrep','-x','charon'],check=False).returncode!=1:raise s.Refused('restoration_charon')
         if s.run(['/usr/sbin/lsof','-nP','-iUDP:500','-iUDP:4500'],check=False).returncode!=1:
