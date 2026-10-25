@@ -23,7 +23,11 @@ route -n get -inet6 default
 
 确认家庭宽带具备可从公网到达的 IPv4，以及可用的 IPv6 默认路由。路由器 WAN 地址若是私网或 CGNAT 地址，普通端口转发不够，须先取得运营商可入站的地址。给 Mac 的有线接口设置 DHCP 地址保留。不要假定任意 Mac 的以太网都叫 `en0`。
 
-路由器只需将 **UDP 500、UDP 4500** 转发到这台 Mac 同名端口；不要把 SSH、VICI、监控端口或 DMZ 一并开放。当前方案强制 NAT-T，协议外层使用 IPv4；域名的 A 记录指向家庭公网 IPv4。此方案不要求为 VPN 入口发布 AAAA，隧道内 IPv6 与入口的地址族是两回事。
+IPv4 入口将 **UDP 500、UDP 4500** 转发到这台 Mac 同名端口，域名 A 记录指向家庭公网 IPv4。不要把 SSH、VICI、监控端口或 DMZ 一并开放。方案使用 UDP 封装；隧道内 IPv6 不要求入口也使用 IPv6。
+
+可选的 IPv6 入口需要客户端与家庭宽带之间真正可达的 IPv6 路径，并在家庭路由器的 IPv6 防火墙中允许 UDP 500/4500 到 Mac 的当前稳定全局地址。它使用该 IPv6 地址直接入站，不是把 IPv4 端口转发规则复制一遍。先用限定来源的测试验证真实认证与数据，再考虑公开 AAAA；仅验证 UDP 到达、IKE 认证或监听端口不够。
+
+新会话将已核验的 LAN IPv4 和 `en0` 稳定 IPv6 地址一起绑定到连接配置、策略观察及 PF 入口规则。旧 IPv4 会话记录保留原含义。当前地址作用域在一次运行期间固定；ISP 前缀变化的不中断热更新尚未实现，不能只修改 DNS 或配置文件就认为运行中的新地址已生效。现有 [DDNS helper](ddns.md) 仍是 A-only 且要求 AAAA 为空；本次源码更新没有为它新增 AAAA 调度。
 
 ## 2. 确定一组一致的部署参数
 
@@ -32,7 +36,8 @@ route -n get -inet6 default
 | VPN 入口域名 | `vpn.example.com` | DDNS、iOS `RemoteAddress`、连接排查 |
 | 服务器 IKE 身份 | `vpn.family.home.arpa` | 服务器证书 SAN、strongSwan local id、iOS `RemoteIdentifier` |
 | Mac 有线接口 | `en0` | PF、路由/地址校验、DDNS、恢复逻辑 |
-| Mac 局域网 IPv4 | `192.0.2.8`（文档保留地址） | `registry.py` 生成的连接、本机地址校验、路由器目标 |
+| Mac 局域网 IPv4 | `192.0.2.8`（文档保留地址） | `outer_endpoints.py`、连接生成、本机地址校验、路由器目标 |
+| 可选外层 IPv6 | 启动时核验的有线接口稳定全局地址 | 会话作用域、连接 `local_addrs`、PF/路由观察、路由器 IPv6 防火墙；AAAA 仅能发布已生效地址 |
 | 客户端 IPv4 池 | `10.77.26.0/24` | 地址分配、selectors、PF、观察器、测试 |
 | 客户端 IPv6 池 | `fd6d:fe83:ab27:2600::/64` | 地址分配、selectors、NAT66、观察器、测试 |
 | 设备身份 | `device01.family.home.arpa` | 客户端证书 SAN、设备 registry、iOS local id |
@@ -71,6 +76,8 @@ route -n get -inet6 default
 ## 6. iPhone 全局配置
 
 采用证书认证、手动系统 VPN 开关、IPv4/IPv6 默认流量选择器及 `IncludeAllNetworks`。不添加国家、网站或应用直连规则。按需连接默认关闭，以便用户主动关闭后恢复普通网络。
+
+当前 iOS 配置生成器设置隧道 **MTU1280**。保留这一值作为已测试的起点：外层 IPv6、UDP 和 ESP 还有封装开销，直接套用普通以太网 MTU1500 可能让 TCP 已连接但 TLS 大包无法往返。它是客户端隧道设置，不要求把 Mac 的物理接口全局 MTU 改为 1280；实际路径仍需验证。
 
 Apple 对 `IncludeAllNetworks` 的系统流量范围有例外；启用它时 `EnforceRoutes` 不会进一步增强同一设置。断线保护可能让连接恢复期间无法直接付款或上网。服务器不能保证让 iOS 每次故障都显示“已断开”，也不能替用户在手机上关闭 VPN。详见 [Apple IKEv2 配置字段](https://developer.apple.com/documentation/devicemanagement/vpn/ikev2-data.dictionary) 和 [路由说明](https://developer.apple.com/documentation/networkextension/routing-your-vpn-network-traffic)。
 

@@ -27,7 +27,7 @@ python3 ddns/build.py --domain example.com --subdomain vpn --interface en0
 
 ## 行为与限制
 
-- helper 从两路 HTTPS 观测公网 IPv4，核对权威 DNS 后只更新目标子域 A。当前设计要求该入口没有 AAAA；隧道内部仍支持 IPv6。
+- helper 从两路 HTTPS 观测公网 IPv4，核对权威 DNS 后只更新目标子域 A。当前设计要求该入口没有 AAAA；隧道内部仍支持 IPv6。服务端新增外层 IPv6 支持不会自动改变这一限制：若准备发布 AAAA，须先适配并验证更新流程，使其只发布运行中连接配置已接受、路由器已放行的稳定 IPv6 地址，不能直接与当前 A-only helper 混用。
 - launchd 每 60 秒检查是否到期，成功后的更新窗口为 300–330 秒，再加实际调度延迟。失败指数退避到约一小时，不会每秒写 DNS。
 - 时钟回拨、重复任务、失败重试和更新冷却有专门处理；离线测试完全模拟 HTTP、密码和服务操作。
 - scheduler 与 helper 保持固定摘要绑定。改源码必须重新构建，不能单独换一份文件。

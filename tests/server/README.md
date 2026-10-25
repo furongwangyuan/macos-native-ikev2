@@ -50,3 +50,11 @@ iPhone, China–Malaysia paths, native build compatibility, or throughput.
 `test_native_fleet.py` additionally contains the in-memory native boundary used
 by its integration tests. Original workspace paths and historical candidate
 hash assertions were removed; all imports resolve inside this checkout.
+
+`test_outer_contract.py`, `test_outer_routes.py`, and `test_outer_handover.py`
+cover explicit IPv6 outer endpoints, legacy IPv4 session recovery, exact dual
+socket inventories, IPv6 SPD text, scoped PF ingress, mixed-family route failures,
+and both directions of IPv4/IPv6 generation handover. A failed IPv6 peer route
+must leave the unrelated IPv4 device forwarding. Their fixtures contain invented
+addresses and remain inside the same socket/subprocess-denying runner; they do
+not reproduce or publish any private packet capture or installation receipt.

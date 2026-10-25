@@ -26,6 +26,7 @@ import crl_gate
 import probe_owner
 import probe_policy
 import fleet_session,registry,fleet_policy
+import outer_endpoints as endpoints
 from mutation_dispatch import Dispatcher
 import controller as ctl
 import reviewed_policy as policy
@@ -46,7 +47,7 @@ def require_closure():
         'mutation_dispatch','mutation_spec','alf_readonly','alf_transaction','network_readonly',
         'controller','reviewed_policy','crl_gate','continuous_clock','probe_owner','probe_policy',
         'probe_contract','probe_process','probe_records','probe_identity','probe_paths',
-        'fleet_session','registry','fleet_policy'))
+        'fleet_session','registry','fleet_policy','outer_endpoints'))
 
 
 @contextlib.contextmanager
@@ -189,10 +190,11 @@ class Owner:
         if self.daemon is not None:self.daemon.wait(timeout=1)
         rec['phase']='exited';self.save()
     def daemon_configuration(self):
+        ipv6='yes' if len(fleet_session.endpoints(self.session['fleet']))==2 else 'no'
         return '''include /usr/local/etc/family-vpn/strongswan.conf
 charon {
     plugins {
-        socket-default { use_ipv6 = no }
+        socket-default { use_ipv6 = @IPV6@ }
     }
     filelog {
         familyvpn {
@@ -203,11 +205,11 @@ charon {
         }
     }
 }
-'''
+'''.replace('@IPV6@',ipv6)
     def connection_configuration(self):
         import fleet_session,registry
         fleet_session.history(self.session)
-        return registry.render_swanctl(self.session['fleet']['registry']).encode()
+        return registry.render_swanctl(self.session['fleet']['registry'],fleet_session.endpoints(self.session['fleet'])).encode()
     def setup(self):
         self.same_boot();self.gate.prepare()
         policies.install_floors(self.session);policies.add_keeper(self.session,'held-keeper')
@@ -230,7 +232,7 @@ charon {
         if self.owned_process()['path']!=str(s.CHARON):raise s.Refused('gate_not_execed_expected_charon')
         pid=self.session['child']['identity']['pid']
         sockets=s.run(['/usr/sbin/lsof','-nP','-a','-p',str(pid),'-iUDP','-F','pftn']).stdout
-        if re.findall(r'^t(.+)$',sockets,re.M)!=['IPv4','IPv4']:raise s.Refused('outer_not_ipv4_only')
+        if not endpoints.ike_sockets(sockets,fleet_session.endpoints(self.session['fleet'])):raise s.Refused('outer_socket_scope_differs')
         s.run([s.SWAN,'--load-all','--noprompt','--uri',s.URI,'--file',FILES['connection']],timeout=10)
         crl_gate.loaded_crl_gate(s,self.session['crl'])
         self.session['phase']='WAITING' if self.session['allow_data'] else 'CLOSED_TEST';self.save()
@@ -281,7 +283,7 @@ charon {
                 raw=s.run(['/sbin/route','-n','get',flag,vip]).stdout
                 try:policy.verify_route(raw,vip)
                 except ValueError as error:raise ctl.RouteTransition('exact_vip_route_changed') from error
-            raw=s.run(['/sbin/route','-n','get','-inet',generation.peer4]).stdout
+            raw=s.run(['/sbin/route','-n','get',endpoints.route_family(generation.peer4),generation.peer4]).stdout
             if not re.search(r'^\s*interface:\s+en0\s*$',raw,re.M):raise ctl.Fault('outer_route_changed')
     def check_local(self,timeout):
         with budget(timeout):
@@ -442,7 +444,7 @@ def preflight(data, *, probe_mode='off'):
         probe_owner.port_absent()
     if probe_mode!='off':raise s.Refused('fleet_probe_mode_unavailable')
     import fleet_session
-    fleet=fleet_session.static(s.read(fleet_session.REGISTRY,limit=65536))
+    fleet_raw=s.read(fleet_session.REGISTRY,limit=65536)
     config=configured()
     if data and not config['allow_data']:raise s.Refused('data_activation_default_refused')
     before=alf.snapshot();alf_gate(before,data)
@@ -457,6 +459,7 @@ def preflight(data, *, probe_mode='off'):
     network.conflict_check(network.read_routes())
     crl=crl_gate.retirement_gate(s)
     health=network.uplink(external=data) # closed tests have zero external HTTP probes
+    fleet=fleet_session.static(fleet_raw,endpoints.from_health(health))
     s.trusted(s.CHARON,0o755);s.trusted(s.SWAN,0o755)
     return dict(version=alf_transaction.VERSION,profile=alf_transaction.PROFILE,
                 fleet=fleet,fleet_active=[],active=True,phase='PREPARING',boot=s.boot(),started=time.time(),allow_data=data,probe_mode=probe_mode,

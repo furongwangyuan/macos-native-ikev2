@@ -13,16 +13,17 @@ from fleet_vici import ParseResult
 from mutation_dispatch import Dispatcher
 
 
-def fixture():
+def fixture(outer_endpoints=None, peer6=None):
     reg=json.loads((HERE/'registry.example.json').read_text())
     reg['devices'].append(dict(device_id='device02',display_name='Second',ike_identity='device02.family.home.arpa',
         state='enabled',vip4='10.77.26.11',vip6='fd6d:fe83:ab27:2600::11'))
-    raw=json.dumps(reg).encode();binding=fs.static(raw);reg=binding['registry']
+    raw=json.dumps(reg).encode();binding=fs.static(raw,outer_endpoints);reg=binding['registry']
     def record(i,src,dst,direction,kind,requests=()):return dict(id=i,src=src,dst=dst,direction=direction,kind=kind,requests=list(requests))
     native=[record(1,'0.0.0.0/0','10.77.26.0/24','out','generate'),record(2,'::/0','fd6d:fe83:ab27:2600::/64','out','generate'),record(3,'0.0.0.0/0','10.77.26.253/32','out','discard')]
     records=copy.deepcopy(native);snaps={}
     for i,d in enumerate(reg['devices']):
-        g=policy.Generation(i+1,i+1,i+1,d['ike_identity'],'203.0.113.101',45000+i,'192.0.2.8',4500,
+        dual=outer_endpoints is not None and len(outer_endpoints)==2 and i==0
+        g=policy.Generation(i+1,i+1,i+1,d['ike_identity'],peer6 if dual else '203.0.113.101',45000+i,outer_endpoints[1] if dual else '192.0.2.8',4500,
             d['vip4'],d['vip6'],format(0x10000000+i,'08x'),format(0x20000000+i,'08x'))
         snaps[d['device_id']]=policy.Snapshot('unique',(g,))
         for vip,suffix,anynet in ((g.vip4,'/32','0.0.0.0/0'),(g.vip6,'/128','::/0')):
@@ -30,12 +31,14 @@ def fixture():
                 src,dst=(vip+suffix,anynet) if direction=='in' else (anynet,vip+suffix)
                 endpoints=(g.peer4,g.local4) if direction=='in' else (g.local4,g.peer4)
                 records.append(record(10+len(records),src,dst,direction,'ipsec',['esp/tunnel/'+'-'.join(endpoints)+'/unique:'+str(g.reqid)]))
-    active={r['id']:True for r in records};proof=policy.audit(reg,snaps,records,active,native)
+    active={r['id']:True for r in records};proof=policy.audit(reg,snaps,records,active,native,outer_endpoints=fs.endpoints(binding))
     before=dict(global_state=2,blockall=True,stealth="Firewall stealth mode is off",builtin=False,downloaded=False,apps={str(s.CHARON):False})
     sess=dict(version=8,profile=fs.PROFILE,boot='synthetic',allow_data=True,probe_mode='off',fleet=binding,fleet_active=[],
         active=True,phase='WAITING',baseline={**{k:0 for k in s.SYS},s.ESP:0},alf_before=before,
         alf_transaction=alf.new(before),health={'public4':'203.0.113.10'},knobs={},files={},
         floors=[dict(r,status='owned') for r in native[:2]],keepers=[dict(native[2],status='owned')])
+    if outer_endpoints is not None:
+        sess['health'].update(lan4=outer_endpoints[0],stable6=outer_endpoints[1])
     class Store:
         def __init__(self):self.durable=copy.deepcopy(sess);self.saved=[]
         def save(self,value):s.session_history(value);self.durable=copy.deepcopy(value);self.saved.append(copy.deepcopy(value))

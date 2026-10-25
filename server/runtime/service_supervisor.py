@@ -28,7 +28,7 @@ RESOURCES=('membership_gate.py','membership_admission.py','enrollment.py','stage
     'crypto/public_crl.py','crypto/public_crl_verify.c','crypto/public-crl-verify','crypto/build-manifest.json',
     'boot_record.py','boot_native.py','boot_store.py','boot_reconcile.py','boot_writer.py','boot_mutation_gate.py',
     'boot_finite_source.py','boot_server_source.py','boot_source.py','boot_handoff.py','production_source.py','production_boot.py','production_activation.py','short_admission.py','vici/__init__.py','vici/command_wrappers.py','vici/event_listener.py','vici/exception.py','vici/protocol.py','vici/session.py','fleet_tables.py','fleet_session.py','fleet_gate.py','fleet_native.py','fleet_controller.py',
-    'registry.py','fleet_policy.py','fleet_vici.py','fleet_wire.py','fleet_exchange.py','fleet_transport.py',
+    'registry.py','outer_endpoints.py','fleet_policy.py','fleet_vici.py','fleet_wire.py','fleet_exchange.py','fleet_transport.py',
     'fleet_coordinator.py','family-vpn.fleet.pf',
     'probe_owner.py','probe_policy.py','probe_contract.py','probe_process.py','probe_records.py',
     'probe_identity.py','probe_paths.py','probe_gate.py','native_runtime.py','native_gate.py','native_support.py','native_policy.py',

@@ -31,7 +31,7 @@ def inventory():
         records[path.relative_to(SERVER).as_posix()] = {
             'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
     required = ('runtime/fleet_coordinator.py', 'runtime/fleet_policy.py',
-                'runtime/fleet_vici.py', 'runtime/service_supervisor.py',
+                'runtime/fleet_vici.py', 'runtime/outer_endpoints.py', 'runtime/service_supervisor.py',
                 'runtime/crypto/public_crl_verify.c', 'runtime/vici/LICENSE',
                 'control/production_service.py', 'harness/native_adapter.py')
     for name in required:

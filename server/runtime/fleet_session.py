@@ -4,6 +4,7 @@ from pathlib import Path
 import hashlib,json,re
 import registry as registration
 import fleet_policy as policy
+import outer_endpoints as outer
 
 VERSION=8
 PROFILE='production-native-fleet-v1'
@@ -13,18 +14,34 @@ HEX=re.compile('[0-9a-f]{64}')
 class Invalid(ValueError):pass
 
 def sha(raw):return hashlib.sha256(raw).hexdigest()
-def static(raw):
+def static(raw,outer_endpoints=None):
     normalized=registration.loads(raw)
-    connection=registration.render_swanctl(normalized).encode()
-    return dict(version=1,registry_sha256=sha(raw),registry=normalized,connection_sha256=sha(connection))
+    scope=outer.normalize(outer.IPV4 if outer_endpoints is None else outer_endpoints)
+    connection=registration.render_swanctl(normalized,scope).encode()
+    result=dict(version=1,registry_sha256=sha(raw),registry=normalized,connection_sha256=sha(connection))
+    if scope!=outer.IPV4:
+        result.update(version=2,outer_endpoints=list(scope))
+    return result
+
+
+def endpoints(value):
+    return outer.IPV4 if value.get('version')==1 else outer.normalize(value['outer_endpoints'])
+
 
 def validate_static(value):
-    if (type(value)is not dict or set(value)!={'version','registry_sha256','registry','connection_sha256'}
-            or type(value['version'])is not int or value['version']!=1
+    base={'version','registry_sha256','registry','connection_sha256'}
+    if type(value)is not dict or type(value.get('version'))is not int or value['version'] not in (1,2):
+        raise Invalid('fleet_binding_shape')
+    required=base if value['version']==1 else base|{'outer_endpoints'}
+    if (set(value)!=required
             or any(type(value[k])is not str or not HEX.fullmatch(value[k]) for k in ('registry_sha256','connection_sha256'))):
         raise Invalid('fleet_binding_shape')
+    try:scope=endpoints(value)
+    except (ValueError,TypeError,KeyError):raise Invalid('fleet_outer_scope') from None
+    if value['version']==2 and (type(value['outer_endpoints'])is not list or len(scope)!=2):
+        raise Invalid('fleet_outer_scope')
     normalized=registration.normalize(value['registry'])
-    if normalized!=value['registry'] or sha(registration.render_swanctl(normalized).encode())!=value['connection_sha256']:
+    if normalized!=value['registry'] or sha(registration.render_swanctl(normalized,scope).encode())!=value['connection_sha256']:
         raise Invalid('fleet_registry_connection_binding')
     return normalized
 
@@ -33,7 +50,7 @@ def encode_device(d):
     return dict(device_id=d.device_id,ready=True,generation=asdict(d.generation),
                 hosts=[list(k[:5])+[list(k[5])] for k in d.hosts],policy_ids=list(d.policy_ids))
 
-def decode_active(value,registry):
+def decode_active(value,registry,outer_endpoints=outer.IPV4):
     if type(value)is not list or len(value)>16:raise Invalid('fleet_active_shape')
     out=[];seen=set();policy_ids=set();children=set();ikes=set();spis=set();reqids=set()
     byid={d['device_id']:d for d in registry['devices']}
@@ -45,7 +62,7 @@ def decode_active(value,registry):
                 or type(row['hosts'])is not list or len(row['hosts'])!=4 or type(row['policy_ids'])is not list
                 or len(row['policy_ids'])!=4 or any(type(i)is not int or not 0<i<2**32 for i in row['policy_ids'])):
             raise Invalid('fleet_active_device_shape')
-        g=policy.Generation(**row['generation']);policy.checked_generation(g,byid[row['device_id']])
+        g=policy.Generation(**row['generation']);policy.checked_generation(g,byid[row['device_id']],outer_endpoints)
         hosts=[]
         for k in row['hosts']:
             if type(k)is not list or len(k)!=6 or type(k[5])is not list:raise Invalid('fleet_active_host_shape')
@@ -70,7 +87,9 @@ def history(session):
             or session.get('profile')!=PROFILE or session.get('probe_mode')!='off'):
         raise Invalid('fleet_session_mode')
     registry=validate_static(session.get('fleet'))
-    active=decode_active(session.get('fleet_active'),registry)
+    scope=endpoints(session['fleet'])
+    if scope!=outer.IPV4 and scope!=outer.from_health(session['health']):raise Invalid('fleet_outer_health_binding')
+    active=decode_active(session.get('fleet_active'),registry,scope)
     if (session.get('allow_data')is False or session.get('phase')=='RESTORED') and active:
         raise Invalid('closed_or_restored_fleet_active')
     # Reusing the old single identity fields would misdescribe the active set.
@@ -111,5 +130,5 @@ def authorize_state_delete(durable,argv):
     if type(close)is not dict or close.get('phase')!='intent':raise Invalid('fleet_delete_without_durable_intent')
     allowed={d[k] for d in registry['devices'] if d['device_id'] in close['devices'] for k in ('vip4','vip6')}
     if address not in allowed:raise Invalid('fleet_delete_not_registered_retirement')
-    if any(address in (d.generation.vip4,d.generation.vip6) for d in decode_active(durable['fleet_active'],registry)):
+    if any(address in (d.generation.vip4,d.generation.vip6) for d in decode_active(durable['fleet_active'],registry,endpoints(durable['fleet']))):
         raise Invalid('fleet_delete_still_active')

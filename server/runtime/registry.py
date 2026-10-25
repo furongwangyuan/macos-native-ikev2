@@ -8,6 +8,7 @@ import ipaddress
 import json
 import re
 import unicodedata
+import outer_endpoints as endpoints
 
 ZONE = 'Asia/Kuala_Lumpur'
 DEVICE = re.compile(r'[a-z][a-z0-9-]{0,30}[a-z0-9]', re.ASCII)
@@ -165,14 +166,16 @@ CONNECTION = '''    family-vpn-@ID@ {
 '''
 
 
-def render_swanctl(registry):
+def render_swanctl(registry, outer_endpoints=endpoints.IPV4):
     registry = normalize(registry)
+    outer_endpoints = endpoints.normalize(outer_endpoints)
+    connection = CONNECTION.replace('local_addrs = 192.0.2.8','local_addrs = '+', '.join(outer_endpoints))
     connections, pools = [], []
     for row in registry['devices']:
         if row['state'] != 'enabled':
             continue
         name = row['device_id']
-        connections.append(CONNECTION.replace('@ID@', name).replace('@AUTH@', row['ike_identity']))
+        connections.append(connection.replace('@ID@', name).replace('@AUTH@', row['ike_identity']))
         pools.append('    family4-' + name + ' {\n        addrs = ' + row['vip4'] +
                      '\n        dns = 202.188.18.188, 1.9.1.9\n    }\n    family6-' + name +
                      ' {\n        addrs = ' + row['vip6'] + '\n    }\n')

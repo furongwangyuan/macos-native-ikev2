@@ -11,6 +11,7 @@ import native_runtime as runtime
 import native_policy as policies
 import reviewed_policy
 import fleet_session as session
+import outer_endpoints as endpoints
 import fleet_policy as policy
 import fleet_coordinator as coordinator
 import fleet_vici,fleet_transport,fleet_wire
@@ -23,7 +24,7 @@ from vici.protocol import Message,FiniteStream
 
 def require_closure():
     s.require_local_modules(('fleet_native','fleet_controller','fleet_session','fleet_gate','fleet_tables',
-        'registry','fleet_policy','fleet_vici','fleet_wire','fleet_exchange','fleet_transport','fleet_coordinator'))
+        'registry','outer_endpoints','fleet_policy','fleet_vici','fleet_wire','fleet_exchange','fleet_transport','fleet_coordinator'))
     here=Path(__file__).resolve().parent
     for name in ('vici','vici.protocol','vici.exception','vici.session','vici.command_wrappers','vici.event_listener'):
         module=sys.modules.get(name);filename=getattr(module,'__file__',None)
@@ -58,7 +59,7 @@ class FleetOwner(ServiceOwner):
             raise
     def registry_current(self):
         raw=s.read(session.REGISTRY,limit=65536)
-        if session.static(raw)!=self.session['fleet']:raise s.Refused('fleet_registry_changed')
+        if session.static(raw,session.endpoints(self.session['fleet']))!=self.session['fleet']:raise s.Refused('fleet_registry_changed')
         return raw
     def connection_configuration(self):
         self.registry_current()
@@ -69,7 +70,7 @@ class FleetOwner(ServiceOwner):
         return value
     def observe(self,timeout):
         # Closed inherited setup only needs a no-IKE assertion. Data controllers
-        # use NativeFleetAdapter directly and never fall back to text/test02.
+        # use NativeFleetAdapter directly and never fall back to a single-device parser.
         parsed=self.fleet_adapter.read_fleet(timeout)
         if self.data_mode:raise s.Refused('single_snapshot_interface_disabled_for_fleet')
         absent=not parsed.unattributed_pending_count and all(x.kind=='absent' for x in parsed.snapshots.values())
@@ -135,7 +136,7 @@ class NativeFleetAdapter:
         if current is None:owner.known_child_alive()
         if current is None or current['path']!=str(s.CHARON):raise s.Refused('fleet_charon_identity')
         registry_raw=s.read(session.REGISTRY,limit=65536)
-        if session.static(registry_raw)!=owner.session['fleet']:raise s.Refused('fleet_registry_changed')
+        if session.static(registry_raw,session.endpoints(owner.session['fleet']))!=owner.session['fleet']:raise s.Refused('fleet_registry_changed')
         files=owner.session.get('files',{})
         if set(files)!={'daemon','connection'}:raise s.Refused('fleet_loaded_config_missing')
         for name,row in files.items():
@@ -175,7 +176,7 @@ class NativeFleetAdapter:
                 events.append(Message.deserialize(FiniteStream(raw)))
             after=self._context()
             if before!=after:raise s.Refused('fleet_vici_context_changed_or_late')
-            parsed=fleet_vici.parse_events(events,self.owner.session['fleet']['registry'])
+            parsed=fleet_vici.parse_events(events,self.owner.session['fleet']['registry'],session.endpoints(self.owner.session['fleet']))
             # A complete valid read can finish its identity/parse checks just
             # after the budget. Discard it as unavailable, not changed identity.
             # Exceptions from those checks remain hard failures even when late.
@@ -244,7 +245,7 @@ class NativeFleetAdapter:
                 try:reviewed_policy.verify_route(raw,vip)
                 except ValueError:return None
                 routes.append(coordinator.Route(vip,'en0',True,True))
-            raw=self._route_output('-inet',g.peer4)
+            raw=self._route_output(endpoints.route_family(g.peer4),g.peer4)
             if raw is None:return None
             interface=re.findall(r'^\s*interface:\s+(\S+)\s*$',raw,re.M)
             flags=re.findall(r'^\s*flags:\s*<([^>]+)>\s*$',raw,re.M)
@@ -260,7 +261,8 @@ class NativeFleetAdapter:
                 x.kind not in ('unique','absent') or x.deleted for x in parsed.snapshots.values()):
             raise runtime.ctl.Fault('fleet_uplink_transition_scope_unknown')
         records,activity,native=self._inventory()
-        proof=policy.audit(owner.session['fleet']['registry'],parsed.snapshots,records,activity,native)
+        proof=policy.audit(owner.session['fleet']['registry'],parsed.snapshots,records,activity,native,
+            outer_endpoints=session.endpoints(owner.session['fleet']))
         # Exact equality to the durably published active generation set avoids
         # reclassifying a simultaneous per-device transition as an uplink event.
         ready=tuple(d for d in proof.devices if d.ready)
@@ -298,7 +300,7 @@ class NativeFleetAdapter:
             return coordinator.NarrowReceipt(remaining,requests)
     def publish(self,expected,proposed,proof):
         with runtime.budget(25):
-            policy.validate_proof(proof,self.owner.session['fleet']['registry'])
+            policy.validate_proof(proof,self.owner.session['fleet']['registry'],session.endpoints(self.owner.session['fleet']))
             byid={d.device_id:d for d in proof.devices if d.ready}
             if any(byid.get(d.device_id)!=d for d in proposed) or any(d not in proposed for d in expected):
                 raise s.Refused('fleet_publish_not_current_superset')

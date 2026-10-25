@@ -325,7 +325,7 @@ class Gate:
         self.root_intact()
         expected=self.session.get('gate_intent',{}).get('expected')
         import fleet_tables,fleet_session
-        active=fleet_session.decode_active(self.session['fleet_active'],self.session['fleet']['registry'])
+        active=fleet_session.decode_active(self.session['fleet_active'],self.session['fleet']['registry'],fleet_session.endpoints(self.session['fleet']))
         return (self.enabled() and self.token_present() and s.values()==s.SYS and expected and self.rules_equal(expected)
                 and fleet_tables.read()==fleet_tables.expected(active))
     def restore_pf(self):

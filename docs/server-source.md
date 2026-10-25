@@ -31,7 +31,8 @@ python3 -I -B server/tools/build_reference.py --output build/reference-server
 |---|---|---|
 | 外部服务器域名 | `vpn.example.com` | `runtime/profile_export.py`、DDNS 配置 |
 | IKE 服务器身份 | `vpn.family.home.arpa` | `runtime/registry.py`、`swanctl.guardian.conf`、profile/证书生成 |
-| LAN IPv4 | `192.0.2.8` | `fleet_policy.py`、`fleet_vici.py`、`native_policy.py`、网络/规则模板 |
+| LAN IPv4 | `192.0.2.8` | `outer_endpoints.py`、`native_policy.py`、网络/规则模板 |
+| 可选外层 IPv6 | 已核验有线接口的稳定全局地址 | `native_runtime.py`、`outer_endpoints.py`、`fleet_session.py`；作用域贯穿 VICI、SPD/PF 与路由观察 |
 | 家庭公网示例 | `203.0.113.8` | `family-vpn*.pf`、初始 profile 工具 |
 | 物理接口 | `en0` | 路由校验、PF 模板、守护配置 |
 | 隧道 IPv4 池 | `10.77.26.0/24` | `registry.py`、PF/SPD 校验、设备地址分配 |
@@ -72,6 +73,7 @@ profile 的 RemoteIdentifier、服务端 IKE 身份及服务器证书 SAN 必须
 - VICI 完整观察有 48 个 IKE 事件上限；短暂容量失败可进入现有有界恢复，持续超限
   仍可能耗尽恢复次数。不是无限连接容量或完整抗 DoS 保证。
 - 明确停止会保留停止意图，不由恢复逻辑擅自重新启用。
+- 外层 IPv6 使用独立核验的本地地址作用域；旧 IPv4 会话仍可恢复。单个 IPv6 对端路由失败只收窄对应设备，健康 IPv4 设备继续转发。跨地址族的旧 CHILD 不会因为端点已改写就提前恢复转发。
 
 macOS 系统网络修改、launchd 安装和证书签发都需要完成独立的部署适配。
 本仓库不会为“方便安装”删除这些检查，也不会在源码打包时改变用户机器的网络。

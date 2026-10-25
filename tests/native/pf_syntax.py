@@ -41,6 +41,35 @@ class NativePFCompilerRegression(unittest.TestCase):
         self.assertEqual(native.classify(compile_only(native.GUARD)),
                          native.classify(compile_only(native.stable_rules_source(native.GUARD))))
 
+    def test_generated_dual_outer_rules_compile_for_empty_and_mixed_fleet(self):
+        # Only synthetic fixtures enter the real syntax-only compiler.
+        here = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(here/'server'))
+        import outer_fixture as fixture
+        import vici_fixture as v
+        import fleet_policy as policy
+        import fleet_vici
+        events = [v.event(0,1,1),v.event(1,2,2)]
+        v.inner(events[0])['local-host'] = fixture.LOCAL6.encode()
+        v.inner(events[0])['remote-host'] = fixture.PEER6.encode()
+        parsed = fleet_vici.parse_events(v.decode(events),v.REG,fixture.OUTER)
+        rows = list(v.NATIVE)
+        for i,snapshot in enumerate(parsed.snapshots.values()):
+            rows += v.hosts(snapshot.generations[0],20+4*i)
+        template = (here.parent/'server/runtime/family-vpn.fleet.pf').read_text()
+        for active in (False,True):
+            with self.subTest(active=active):
+                snapshots = parsed.snapshots if active else {
+                    d['device_id']:policy.Snapshot('absent') for d in v.REG['devices']}
+                inventory = rows if active else v.NATIVE
+                proof = policy.audit(v.REG,snapshots,inventory,
+                    {r['id']:True for r in inventory},v.NATIVE,outer_endpoints=fixture.OUTER)
+                text = policy.render(template,v.REG,proof)
+                compiled = native.classify(compile_only(native.stable_rules_source(text)))
+                ike6 = [line for line in compiled['filters'] if 'familyvpn_ike6' in line]
+                self.assertEqual(len(ike6),2)  # UDP 500 and UDP 4500
+                self.assertTrue(all('to '+fixture.LOCAL6 in line for line in ike6))
+
 
 if __name__ == '__main__':
     if os.geteuid() == 0:

@@ -3,6 +3,7 @@ import math
 import native_runtime as runtime
 import fleet_coordinator as fleet
 import service_pki
+import fleet_session
 from supervisor_core import MaintenanceDue
 from fleet_native import FleetOwner,NativeFleetAdapter
 
@@ -11,7 +12,7 @@ class Controller:
         if type(owner)is not FleetOwner or type(owner.fleet_adapter)is not NativeFleetAdapter:
             raise runtime.s.Refused('fleet_concrete_service_owner_required')
         self.owner,self.deadline,self.clock=owner,deadline,clock
-        self.coordinator=fleet.Coordinator(owner.session['fleet']['registry'],owner.fleet_adapter)
+        self.coordinator=fleet.Coordinator(owner.session['fleet']['registry'],owner.fleet_adapter,outer_endpoints=fleet_session.endpoints(owner.session['fleet']))
         self.failure=None
         # Distinct generation history is admission evidence for a bounded test,
         # not lifetime production telemetry. The live coordinator already keeps

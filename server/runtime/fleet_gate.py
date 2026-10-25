@@ -65,7 +65,7 @@ class FleetGate:
     def state(self):return self.owner.session
     def current(self):
         registry=session.history(self.state)
-        return session.decode_active(self.state['fleet_active'],registry)
+        return session.decode_active(self.state['fleet_active'],registry,session.endpoints(self.state['fleet']))
     def native(self):
         owned=self.state.get('floors',[])+self.state.get('keepers',[])
         if len(owned)!=3 or any(r.get('status')!='owned' for r in owned):raise s.Refused('fleet_native_floor_receipt')
@@ -73,7 +73,7 @@ class FleetGate:
     def rules(self,active):
         registry=self.state['fleet']['registry'];byid={d.device_id:d for d in active}
         proof=policy.FleetProof(policy.registry_digest(registry),self.native(),tuple(
-            byid.get(d['device_id'],policy.DeviceProof(d['device_id'],False,None,(),())) for d in registry['devices']))
+            byid.get(d['device_id'],policy.DeviceProof(d['device_id'],False,None,(),())) for d in registry['devices']),session.endpoints(self.state['fleet']))
         text=policy.render(s.read(s.BASE/'family-vpn.fleet.pf').decode(),registry,proof)
         text,count=re.subn(r'^table <familyvpn_home4> persist \{[^\n]*\}$',
             'table <familyvpn_home4> persist { '+self.state['health']['public4']+' }',text,flags=re.M)

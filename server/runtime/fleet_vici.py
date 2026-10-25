@@ -8,6 +8,7 @@ not independent cryptographic proof. This candidate is not wired into runtime.
 from dataclasses import dataclass
 import ipaddress
 import re
+import outer_endpoints as endpoints
 
 from registry import normalize
 from fleet_policy import Fault, Generation, Snapshot, checked_generation, generation_groups, checked_snapshot, MAX_IKE_EVENTS, MAX_CHILDREN_PER_IKE, MAX_GENERATIONS
@@ -124,7 +125,7 @@ def proposal(fields,ike):
     if ike and value(fields,'prf-alg')!='PRF_HMAC_SHA2_256':raise Fault('VICI PRF transform')
 
 
-def established_ike(fields,device,established=True):
+def established_ike(fields,device,established=True,outer_endpoints=endpoints.IPV4):
     required=IKE_BASE|{'encr-alg','encr-keysize','prf-alg','dh-group'}
     if established:required=required|{'established'}
     section(fields,required,IKE_BASE|IKE_OPTIONAL)
@@ -133,14 +134,12 @@ def established_ike(fields,device,established=True):
     if set(fields)&forbidden:raise Fault('VICI unsupported IKE feature')
     if value(fields,'local-id')!='vpn.family.home.arpa' or value(fields,'remote-id')!=device['ike_identity']:
         raise Fault('VICI registered authentication identity differs')
-    if value(fields,'local-host')!='192.0.2.8' or integer(fields,'local-port',1,65535)!=4500:
+    local=value(fields,'local-host')
+    if integer(fields,'local-port',1,65535)!=4500:
         raise Fault('VICI local endpoint differs')
     peer=value(fields,'remote-host')
-    try:address=ipaddress.IPv4Address(peer)
-    except ValueError:raise Fault('VICI outer peer family or syntax') from None
-    if (str(address)!=peer or address.is_unspecified or address.is_loopback or address.is_link_local
-            or address.is_multicast or peer in ('192.0.2.8','255.255.255.255')):
-        raise Fault('VICI outer peer scope')
+    try:endpoints.pair(local,peer,outer_endpoints)
+    except (ValueError,TypeError):raise Fault('VICI outer endpoint differs') from None
     port=integer(fields,'remote-port',1,65535)
     spi(fields,'initiator-spi',16);spi(fields,'responder-spi',16)
     for key in ('initiator','nat-local','nat-remote','nat-fake','nat-any'):
@@ -155,10 +154,10 @@ def established_ike(fields,device,established=True):
             raise Fault('VICI task name')
     proposal(fields,True)
     if 'remote-vips' in fields:exact_list(fields,'remote-vips',(device['vip4'],device['vip6']))
-    return peer,port
+    return peer,port,local,4500
 
 
-def parse_child(name,fields,ike,device,endpoint,seen_children,seen_reqid):
+def parse_child(name,fields,ike,device,endpoint,seen_children,seen_reqid,outer_endpoints=endpoints.IPV4):
     section(fields,CHILD_BASE,CHILD_BASE|CHILD_IPSEC)
     ident=integer(fields,'uniqueid',1,2**32-1)
     if name!='internet-'+str(ident) or value(fields,'name')!='internet':
@@ -193,12 +192,12 @@ def parse_child(name,fields,ike,device,endpoint,seen_children,seen_reqid):
         if key in fields:integer(fields,key,-2**63,2**63-1,signed=True)
     generation=Generation(integer(ike,'uniqueid',1,2**32-1),ident,
         integer(fields,'reqid',1,2**32-1),device['ike_identity'],endpoint[0],endpoint[1],
-        '192.0.2.8',4500,device['vip4'],device['vip6'],spi(fields,'spi-in',8),spi(fields,'spi-out',8))
-    checked_generation(generation,device)
+        endpoint[2],endpoint[3],device['vip4'],device['vip6'],spi(fields,'spi-in',8),spi(fields,'spi-out',8))
+    checked_generation(generation,device,outer_endpoints)
     return state,generation
 
 
-def parse_events(events,registry):
+def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
     """Return every registered device, preserving ambiguity without a winner.
 
     CREATED/CONNECTING may contain an attacker-claimed name or identity. They
@@ -208,6 +207,7 @@ def parse_events(events,registry):
     never unique; established-only statistics must be absent as upstream emits.
     Other states and duplicate inherited CHILD ownership remain unsupported.
     """
+    outer_endpoints=endpoints.normalize(outer_endpoints)
     registry=normalize(registry)
     bounded_tree(events)
     devices={d['device_id']:d for d in registry['devices']}
@@ -230,7 +230,7 @@ def parse_events(events,registry):
         if state not in ('ESTABLISHED','DELETING','REKEYING','REKEYED'):raise Fault('VICI unsupported IKE lifecycle state')
         if name not in names:raise Fault('VICI unknown established connection')
         device=devices[names[name]]
-        endpoint=established_ike(ike,device,established=state=='ESTABLISHED')
+        endpoint=established_ike(ike,device,established=state=='ESTABLISHED',outer_endpoints=outer_endpoints)
         children=ike['child-sas']
         if not isinstance(children,dict) or len(children)>MAX_CHILDREN_PER_IKE:raise Fault('VICI CHILD section bound')
         # Every authenticated event is fully checked within the unchanged
@@ -244,7 +244,7 @@ def parse_events(events,registry):
             continue
         if state=='DELETING' and not children and 'remote-vips' not in ike:
             continue
-        records=[parse_child(key,fields,ike,device,endpoint,seen_children,seen_reqid) for key,fields in children.items()]
+        records=[parse_child(key,fields,ike,device,endpoint,seen_children,seen_reqid,outer_endpoints) for key,fields in children.items()]
         complete_count+=sum(g is not None for _,g in records)
         if complete_count>MAX_GENERATIONS:raise Fault('VICI fleet complete generation budget')
         groups[device['device_id']].append((state,records))

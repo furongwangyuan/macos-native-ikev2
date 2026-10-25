@@ -11,6 +11,7 @@ import json
 import re
 
 from registry import normalize
+import outer_endpoints as endpoints
 
 BASE_TEMPLATE_SHA256 = 'd8a7ed883f5056cd6c2ebc45de62435e792733225cc462714729fad9c2e3c463'
 # Keep the existing complete-read resource budgets. Distribution across devices
@@ -72,6 +73,7 @@ class FleetProof:
     registry_sha256: str
     native: tuple
     devices: tuple
+    outer_endpoints: tuple = endpoints.IPV4
 
 
 def registry_digest(registry):
@@ -118,7 +120,7 @@ def native_keys(owned):
     return keys
 
 
-def validate_proof(proof,registry=None):
+def validate_proof(proof,registry=None,outer_endpoints=None):
     """Check transport invariants; this is not a signature or freshness proof.
 
     Only current in-memory audit outputs may reach an eventual privileged
@@ -128,6 +130,8 @@ def validate_proof(proof,registry=None):
             or not re.fullmatch('[0-9a-f]{64}',proof.registry_sha256)
             or type(proof.native) is not tuple or type(proof.devices) is not tuple
             or not 1<=len(proof.devices)<=16):raise Fault('invalid fleet proof structure')
+    scope=endpoints.normalize(proof.outer_endpoints)
+    if outer_endpoints is not None and scope!=endpoints.normalize(outer_endpoints):raise Fault('proof outer scope differs')
     owned=[record_from_key(k) for k in proof.native]
     if native_keys(owned)!=proof.native:raise Fault('invalid native proof')
     byid=None if registry is None else {d['device_id']:d for d in normalize(registry)['devices']}
@@ -155,7 +159,7 @@ def validate_proof(proof,registry=None):
                 usage_timezone='Asia/Kuala_Lumpur',devices=[dict(device_id=d.device_id,display_name='proof',
                 ike_identity=d.device_id+'.family.home.arpa',state='enabled',
                 vip4=d.generation.vip4,vip6=d.generation.vip6)]))['devices'][0]
-            checked_generation(d.generation,descriptor)
+            checked_generation(d.generation,descriptor,scope)
         if d.ready:
             if (d.generation is None or len(hosts)!=4 or d.policy_ids!=tuple(sorted(r['id'] for r in hosts))
                     or len({(r['direction'],r['src'],r['dst']) for r in hosts})!=4
@@ -167,19 +171,17 @@ def validate_proof(proof,registry=None):
     if byid is not None and devices!=set(byid):raise Fault('incomplete proof device scope')
 
 
-def checked_generation(g, device):
+def checked_generation(g, device, outer_endpoints=endpoints.IPV4):
     if type(g) is not Generation:raise Fault('normalized generation required')
     if any(type(getattr(g,k)) is not int or not 0<getattr(g,k)<2**32 for k in ('ike_id','child_id','reqid')):
         raise Fault('invalid generation identifier')
     if (g.remote_id,g.vip4,g.vip6)!=(device['ike_identity'],device['vip4'],device['vip6']):
         raise Fault('generation and permanent registered identity differ')
-    if g.local4!='192.0.2.8' or type(g.local_port) is not int or g.local_port!=4500:
+    if type(g.local_port) is not int or g.local_port!=4500:
         raise Fault('unexpected local endpoint')
     if type(g.peer_port) is not int or not 1<=g.peer_port<=65535:raise Fault('unexpected peer port')
-    try:peer=ipaddress.IPv4Address(g.peer4)
-    except (ValueError,TypeError):raise Fault('unexpected peer address') from None
-    if (str(peer)!=g.peer4 or peer.is_unspecified or peer.is_loopback or peer.is_link_local
-            or peer.is_multicast or g.peer4==g.local4):raise Fault('unexpected peer address')
+    try:endpoints.pair(g.local4,g.peer4,outer_endpoints)
+    except (ValueError,TypeError):raise Fault('unexpected outer endpoint') from None
     if any(type(s) is not str or not re.fullmatch('[0-9a-f]{8}',s) or int(s,16)==0
            for s in (g.spi_in,g.spi_out)):raise Fault('unexpected ESP SPI')
 
@@ -235,25 +237,21 @@ def host_matches(r,g):
 
 
 
-def host_request_reqid(record):
+def host_request_reqid(record,outer_endpoints=endpoints.IPV4):
     """Validate one exact host tunnel request, without inferring authentication."""
     requests=record['requests']
-    match=(re.fullmatch(r'esp/tunnel/([0-9.]+)-([0-9.]+)/unique[:#]([1-9][0-9]{0,9})',requests[0])
+    match=(re.fullmatch(r'esp/tunnel/([^/\s]+)-([^/\s]+)/unique[:#]([1-9][0-9]{0,9})',requests[0])
            if len(requests)==1 else None)
     if match is None or not 0<int(match[3])<2**32:
         raise Fault('host tunnel request differs')
     outer_in,outer_out=match[1],match[2]
     peer,local=(outer_in,outer_out) if record['direction']=='in' else (outer_out,outer_in)
-    try:address=ipaddress.IPv4Address(peer)
-    except ValueError:raise Fault('host tunnel endpoint differs') from None
-    if (local!='192.0.2.8' or str(address)!=peer or address.is_unspecified
-            or address.is_loopback or address.is_link_local or address.is_multicast
-            or peer=='192.0.2.8'):
-        raise Fault('host tunnel endpoint differs')
+    try:endpoints.pair(local,peer,outer_endpoints)
+    except (ValueError,TypeError):raise Fault('host tunnel endpoint differs') from None
     return int(match[3])
 
 
-def audit(registry,snapshots,records,active,owned_native,remembered=None,handovers=None):
+def audit(registry,snapshots,records,active,owned_native,remembered=None,handovers=None,outer_endpoints=endpoints.IPV4):
     """Return independent device readiness after validating the entire inventory.
 
     Exact remembered keys come only from a previous complete inventory audit,
@@ -262,6 +260,7 @@ def audit(registry,snapshots,records,active,owned_native,remembered=None,handove
     ownership or select a winner
     among overlapping CHILD/IKE generations.
     """
+    outer_endpoints=endpoints.normalize(outer_endpoints)
     registry=normalize(registry)
     devices={d['device_id']:d for d in registry['devices']}
     if type(snapshots) is not dict or set(snapshots)!=set(devices):raise Fault('incomplete fleet snapshot')
@@ -274,11 +273,11 @@ def audit(registry,snapshots,records,active,owned_native,remembered=None,handove
         if type(history) is not tuple or len(history) not in (2,4):
             raise Fault('invalid handover provenance')
         for old,mapped in zip(history[::2],history[1::2]):
-            checked_generation(old,devices[ident]);checked_generation(mapped,devices[ident])
-            # Only the remote endpoint may differ. The extra pair is at most
+            checked_generation(old,devices[ident],outer_endpoints);checked_generation(mapped,devices[ident],outer_endpoints)
+            # Only the validated outer endpoints may differ. The extra pair is at most
             # one previously retired CHILD, retained solely as closed history.
-            old_fields=tuple(getattr(old,k) for k in Generation.__dataclass_fields__ if k not in ('peer4','peer_port'))
-            mapped_fields=tuple(getattr(mapped,k) for k in Generation.__dataclass_fields__ if k not in ('peer4','peer_port'))
+            old_fields=tuple(getattr(old,k) for k in Generation.__dataclass_fields__ if k not in ('peer4','peer_port','local4','local_port'))
+            mapped_fields=tuple(getattr(mapped,k) for k in Generation.__dataclass_fields__ if k not in ('peer4','peer_port','local4','local_port'))
             if old_fields!=mapped_fields:
                 raise Fault('handover provenance changed beyond endpoint')
     seen_child={}; seen_reqid={}; seen_ike={}; seen_in={}; seen_out={}
@@ -290,7 +289,7 @@ def audit(registry,snapshots,records,active,owned_native,remembered=None,handove
         if generation_count>MAX_GENERATIONS or ike_count>MAX_IKE_EVENTS:
             raise Fault('fleet normalized generation budget')
         for g in snapshot.generations:
-            checked_generation(g,devices[ident])
+            checked_generation(g,devices[ident],outer_endpoints)
             for seen,value,label in ((seen_child,g.child_id,'CHILD'),(seen_reqid,g.reqid,'reqid'),(seen_ike,g.ike_id,'IKE')):
                 if value in seen and seen[value]!=ident:raise Fault('cross-device '+label+' reuse')
                 seen[value]=ident
@@ -377,7 +376,7 @@ def audit(registry,snapshots,records,active,owned_native,remembered=None,handove
                 # only: retain the metadata, never choose a generation or
                 # grant forwarding/deletion rights. Other rows still undergo
                 # the complete audit, including native and reqid ownership.
-                host_request_reqid(r)
+                host_request_reqid(r,outer_endpoints)
                 blocked.add(ident)
             # Existing authenticated/remembered matches keep their original
             # semantics. Only current active SPD rows can conflict with a new
@@ -401,7 +400,7 @@ def audit(registry,snapshots,records,active,owned_native,remembered=None,handove
             and all(active[r['id']] and host_matches(r,g) for r in hosts))
         result.append(DeviceProof(ident,ready,g,tuple(sorted(record_key(r) for r in hosts)),
                                   tuple(sorted(r['id'] for r in hosts)) if ready else ()))
-    proof=FleetProof(registry_digest(registry),native,tuple(result))
+    proof=FleetProof(registry_digest(registry),native,tuple(result),outer_endpoints)
     validate_proof(proof,registry)
     return proof
 
@@ -414,7 +413,7 @@ def transition(previous,current):
     """
     validate_proof(current)
     if previous is not None:validate_proof(previous)
-    if previous is not None and (previous.native!=current.native or previous.registry_sha256!=current.registry_sha256):
+    if previous is not None and (previous.native!=current.native or previous.registry_sha256!=current.registry_sha256 or previous.outer_endpoints!=current.outer_endpoints):
         raise Fault('registry or native scope changed; full guarded transaction required')
     before={} if previous is None else {d.device_id:d for d in previous.devices if d.ready}
     after={d.device_id:d for d in current.devices if d.ready}
@@ -438,7 +437,7 @@ def render(template,registry,proof):
     for d in proof.devices:
         if d.ready:
             if byid[d.device_id]['state']!='enabled':raise Fault('disabled registration cannot be activated')
-            checked_generation(d.generation,byid[d.device_id])
+            checked_generation(d.generation,byid[d.device_id],proof.outer_endpoints)
     markers={'# ACTIVE_IPV4_RETURN_RULE':
         'pass out quick on $wan inet from any to <familyvpn_active4> tagged FAMILYVPN_EGRESS4 no state label "familyvpn_return4"',
         'table <familyvpn_home4>':
@@ -455,4 +454,8 @@ def render(template,registry,proof):
     for old,new in markers.items():
         if template.count(old)!=1:raise Fault('fixed template structure differs')
         template=template.replace(old,new,1)
+    if len(proof.outer_endpoints)==2:
+        marker='pass in quick on $wan inet proto udp from any to 192.0.2.8 port { 500, 4500 } keep state (if-bound) label "familyvpn_ike"'
+        addition='pass in quick on $wan inet6 proto udp from any to '+proof.outer_endpoints[1]+' port { 500, 4500 } keep state (if-bound) label "familyvpn_ike6"'
+        template=template.replace(marker,marker+'\n'+addition,1)
     return template

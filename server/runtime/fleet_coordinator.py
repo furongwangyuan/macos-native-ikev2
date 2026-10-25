@@ -4,12 +4,13 @@ The in-memory fixture class remains for source comparison only; the Coordinator
 accepts only the concrete NativeFleetAdapter. No original frozen file is changed.
 """
 import copy
+import outer_endpoints as endpoints
 from dataclasses import dataclass, replace
 import re
 
 from registry import normalize
 from fleet_policy import (DeviceProof, FleetProof, Generation, Snapshot, Fault,
-                          PolicyTransition, audit, native_keys, registry_digest, checked_snapshot, MAX_IKE_EVENTS)
+                          PolicyTransition, audit, native_keys, registry_digest, checked_snapshot, checked_generation, MAX_IKE_EVENTS)
 from fleet_vici import ParseResult
 from fleet_transport import TransientTransportFault
 
@@ -100,8 +101,8 @@ def _endpoint(g):
 
 
 def _same_ike(g, old):
-    return (g.ike_id, g.remote_id, g.vip4, g.vip6, g.local4, g.local_port) == (
-        old.ike_id, old.remote_id, old.vip4, old.vip6, old.local4, old.local_port)
+    return (g.ike_id, g.remote_id, g.vip4, g.vip6) == (
+        old.ike_id, old.remote_id, old.vip4, old.vip6)
 
 
 def _same_child(g, old):
@@ -117,6 +118,8 @@ class Handover:
     peer_port: int
     replacement: object = None
     retired: tuple = ()
+    local4: object = None
+    local_port: object = None
 
     def old_children(self):
         return (self.old,) + self.retired
@@ -124,12 +127,17 @@ class Handover:
     def historical_child(self, g):
         return any(_same_child(g, old) for old in self.old_children())
 
+    def endpoint(self):
+        return (self.peer4,self.peer_port,self.old.local4 if self.local4 is None else self.local4,
+                self.old.local_port if self.local_port is None else self.local_port)
+
     def mapped_old(self):
-        return replace(self.old, peer4=self.peer4, peer_port=self.peer_port)
+        peer,port,local,local_port=self.endpoint()
+        return replace(self.old,peer4=peer,peer_port=port,local4=local,local_port=local_port)
 
     def fresh_child(self, g):
         return (_same_ike(g, self.old)
-                and (g.peer4, g.peer_port) == (self.peer4, self.peer_port)
+                and _endpoint(g) == self.endpoint()
                 and all(g.child_id != old.child_id and g.spi_in != old.spi_in
                         and g.spi_out != old.spi_out for old in self.old_children()))
 
@@ -230,10 +238,11 @@ class Coordinator:
     inventory, native/context/registry changes or unsupported provenance stops
     globally. No stopped instance can resume or accept a new registry in place.
     """
-    def __init__(self, registry, adapter):
+    def __init__(self, registry, adapter, outer_endpoints=endpoints.IPV4):
         from fleet_native import NativeFleetAdapter
         if type(adapter) is not NativeFleetAdapter:
             raise Fault('concrete NativeFleetAdapter required')
+        self.outer_endpoints = endpoints.normalize(outer_endpoints)
         self.registry = normalize(registry)
         self.registry_sha256 = registry_digest(self.registry)
         self.adapter = adapter
@@ -287,14 +296,14 @@ class Coordinator:
         self.last_result = Result('STOPPED', (), self.pending_count, reason, confirmed)
         return self.last_result
 
-    def _retarget_handover(self, ident, handover, peer4, peer_port):
+    def _retarget_handover(self, ident, handover, peer4, peer_port, local4, local_port):
         proof = self.guarded_proofs.get(ident)
         # A new CHILD may pass its first complete SPD/route frame and then
         # move again before publication. It is now old for the next target;
         # comparing only with the first admitted CHILD would reopen it there.
         if proof is not None and proof.ready and handover.fresh_child(proof.generation):
-            return Handover(proof.generation, peer4, peer_port, retired=(handover.old,))
-        return replace(handover, peer4=peer4, peer_port=peer_port)
+            return Handover(proof.generation, peer4, peer_port, retired=(handover.old,),local4=local4,local_port=local_port)
+        return replace(handover, peer4=peer4, peer_port=peer_port,local4=local4,local_port=local_port)
 
     def _view(self):
         view = self.adapter.observe()
@@ -308,7 +317,8 @@ class Coordinator:
         elif self.context != view.context_token:
             raise Fault('global authenticated context changed')
         parsed = view.parsed
-        ids = {d['device_id'] for d in self.registry['devices']}
+        devices = {d['device_id']:d for d in self.registry['devices']}
+        ids = set(devices)
         if (type(parsed) is not ParseResult or type(parsed.snapshots) is not dict
                 or set(parsed.snapshots) != ids
                 or type(parsed.unattributed_pending_count) is not int
@@ -329,6 +339,8 @@ class Coordinator:
             # It cannot select a winner; real MOBIKE admission below still
             # requires exact historical or fresh CHILD/endpoint evidence.
             checked_snapshot(snapshot)
+            for generation in snapshot.generations:
+                checked_generation(generation,devices[ident],self.outer_endpoints)
             visible_ikes.update(g.ike_id for g in snapshot.generations)
             previous = self.last_activated.get(ident)
             if previous is None:
@@ -359,10 +371,10 @@ class Coordinator:
             if moved:
                 if any(not _same_ike(g, last) for g in moved):
                     raise Fault('handover changed authenticated identity or local scope')
-                endpoints = {(g.peer4, g.peer_port) for g in snapshot.generations}
-                if len(endpoints) != 1:
+                current_endpoints = {_endpoint(g) for g in snapshot.generations}
+                if len(current_endpoints) != 1:
                     raise Fault('handover has multiple current endpoints')
-                peer4, peer_port = next(iter(endpoints))
+                peer4, peer_port, local4, local_port = next(iter(current_endpoints))
                 if handover is None or (handover.replacement is not None
                                          and last == handover.replacement):
                     retired = () if handover is None else (handover.old,)
@@ -370,25 +382,25 @@ class Coordinator:
                     # a later ordinary rekey may already have passed a full
                     # frame without publication. It is old at the next port.
                     handover = Handover(last, last.peer4, last.peer_port, retired=retired)
-                    handover = self._retarget_handover(ident, handover, peer4, peer_port)
+                    handover = self._retarget_handover(ident, handover, peer4, peer_port, local4, local_port)
                     self.handovers[ident] = handover
-                elif (peer4, peer_port) != (handover.peer4, handover.peer_port):
-                    handover = self._retarget_handover(ident, handover, peer4, peer_port)
+                elif (peer4, peer_port, local4, local_port) != handover.endpoint():
+                    handover = self._retarget_handover(ident, handover, peer4, peer_port, local4, local_port)
                     self.handovers[ident] = handover
             if handover is not None and handover.replacement is None and snapshot.generations:
-                endpoints = {(g.peer4, g.peer_port) for g in snapshot.generations}
-                if len(endpoints) != 1 or any(not _same_ike(g, handover.old) for g in snapshot.generations):
+                current_endpoints = {_endpoint(g) for g in snapshot.generations}
+                if len(current_endpoints) != 1 or any(not _same_ike(g, handover.old) for g in snapshot.generations):
                     raise Fault('handover has ambiguous authenticated endpoint')
-                peer4, peer_port = next(iter(endpoints))
-                if (peer4, peer_port) != (handover.peer4, handover.peer_port):
-                    handover = self._retarget_handover(ident, handover, peer4, peer_port)
+                peer4, peer_port, local4, local_port = next(iter(current_endpoints))
+                if (peer4, peer_port, local4, local_port) != handover.endpoint():
+                    handover = self._retarget_handover(ident, handover, peer4, peer_port, local4, local_port)
                     self.handovers[ident] = handover
             old_present = handover is not None and any(
                 handover.historical_child(g) for g in snapshot.generations)
             if handover is not None and (handover.replacement is None or old_present):
                 for g in snapshot.generations:
                     if (not _same_ike(g, handover.old)
-                            or (g.peer4, g.peer_port) != (handover.peer4, handover.peer_port)
+                            or _endpoint(g) != handover.endpoint()
                             or not (handover.historical_child(g) or handover.fresh_child(g))):
                         raise Fault('handover CHILD provenance differs')
                 continue
@@ -400,8 +412,8 @@ class Coordinator:
                 # closed until unique admission passes its ordinary two reads.
                 current = snapshot.generations[0]
                 for g in snapshot.generations:
-                    if (g.local4, g.local_port, g.vip4, g.vip6, g.remote_id) != (
-                            current.local4, current.local_port, current.vip4, current.vip6, current.remote_id):
+                    if (g.vip4, g.vip6, g.remote_id) != (
+                            current.vip4, current.vip6, current.remote_id):
                         raise Fault('overlap changed authenticated identity or local scope')
                     if not replacing_ike and _endpoint(g) != _endpoint(current):
                         raise Fault('overlap is not one fixed-endpoint CHILD transition')
@@ -413,7 +425,8 @@ class Coordinator:
 
     def _handover_history(self):
         return {ident: tuple(g for old in h.old_children() for g in
-                    (old, replace(old, peer4=h.peer4, peer_port=h.peer_port)))
+                    (old, replace(old, peer4=h.endpoint()[0], peer_port=h.endpoint()[1],
+                                  local4=h.endpoint()[2],local_port=h.endpoint()[3])))
                 for ident, h in self.handovers.items()}
 
     def _remembered(self):
@@ -444,7 +457,7 @@ class Coordinator:
             try:
                 fresh = audit(self.registry, latest.parsed.snapshots, records, activity,
                               native, remembered=self._remembered(),
-                              handovers=self._handover_history())
+                              handovers=self._handover_history(),outer_endpoints=self.outer_endpoints)
                 break
             except PolicyTransition as error:
                 if attempt == 2 or (not self.handovers
@@ -482,7 +495,7 @@ class Coordinator:
         records, activity, native = self.adapter.inventory()
         try:
             proof = audit(self.registry, view.parsed.snapshots, records, activity, native,
-                          remembered=self._remembered(), handovers=self._handover_history())
+                          remembered=self._remembered(), handovers=self._handover_history(),outer_endpoints=self.outer_endpoints)
         except PolicyTransition:
             self._recheck_transition(view, native_keys(native))
             return None
