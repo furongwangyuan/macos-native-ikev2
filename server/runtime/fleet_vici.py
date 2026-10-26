@@ -175,14 +175,18 @@ def parse_child(name,fields,ike,device,endpoint,seen_children,seen_reqid,outer_e
     if state in PARTIAL_CHILD:
         section(fields,CHILD_BASE,CHILD_BASE)
         strings(fields,'local-ts');strings(fields,'remote-ts')
-        return state,None
+        return state,None,False
     if state not in COMPLETE_CHILD:raise Fault('VICI unsupported CHILD state')
     section(fields,CHILD_BASE|{'protocol','encap','spi-in','spi-out','encr-alg','encr-keysize',
         'bytes-in','bytes-out','packets-in','packets-out','install-time'},CHILD_BASE|CHILD_IPSEC)
     if value(fields,'protocol')!='ESP' or value(fields,'encap')!='yes':
         raise Fault('VICI ESP UDP encapsulation required')
     exact_list(ike,'remote-vips',(device['vip4'],device['vip6']))
-    exact_list(fields,'local-ts',('0.0.0.0/0','::/0'))
+    # A structurally valid local scope mismatch makes this entire device
+    # unready, not an unknown fleet inventory. Keep checking every other
+    # field and retain its generation for complete ownership/overlap checks.
+    local_ts=strings(fields,'local-ts')
+    scope_ready=len(local_ts)==2 and set(local_ts)=={'0.0.0.0/0','::/0'}
     exact_list(fields,'remote-ts',(device['vip4']+'/32',device['vip6']+'/128'))
     proposal(fields,False)
     for key in ('bytes-in','bytes-out','packets-in','packets-out','use-in','use-out'):
@@ -194,7 +198,7 @@ def parse_child(name,fields,ike,device,endpoint,seen_children,seen_reqid,outer_e
         integer(fields,'reqid',1,2**32-1),device['ike_identity'],endpoint[0],endpoint[1],
         endpoint[2],endpoint[3],device['vip4'],device['vip6'],spi(fields,'spi-in',8),spi(fields,'spi-out',8))
     checked_generation(generation,device,outer_endpoints)
-    return state,generation
+    return state,generation,scope_ready
 
 
 def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
@@ -205,6 +209,8 @@ def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
     The upper layer must still audit the entire native policy inventory.
     Mapped, fully checked DELETING/REKEYING IKEs with data-plane scope produce pending/overlap only,
     never unique; established-only statistics must be absent as upstream emits.
+    A complete CHILD with nonmatching local-ts retains its actual state and
+    ownership metadata but cannot make its device unique/ready.
     Other states and duplicate inherited CHILD ownership remain unsupported.
     """
     outer_endpoints=endpoints.normalize(outer_endpoints)
@@ -245,7 +251,7 @@ def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
         if state=='DELETING' and not children and 'remote-vips' not in ike:
             continue
         records=[parse_child(key,fields,ike,device,endpoint,seen_children,seen_reqid,outer_endpoints) for key,fields in children.items()]
-        complete_count+=sum(g is not None for _,g in records)
+        complete_count+=sum(g is not None for _,g,_scope_ready in records)
         if complete_count>MAX_GENERATIONS:raise Fault('VICI fleet complete generation budget')
         groups[device['device_id']].append((state,records))
     snapshots={};seen_in={};seen_out={}
@@ -254,7 +260,8 @@ def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
             snapshots[ident]=Snapshot('absent')
             continue
         records=[record for _state,children in ikes for record in children]
-        complete=[(state,g) for state,g in records if g is not None]
+        complete=[(state,g) for state,g,_scope_ready in records if g is not None]
+        scope_ready=all(ready for _state,_generation,ready in records)
         if len(complete)>MAX_GENERATIONS:raise Fault('VICI complete generation bound')
         complete.sort(key=lambda row:(row[1].ike_id,row[1].child_id))
         generations=tuple(g for _,g in complete)
@@ -268,7 +275,7 @@ def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
                 seen[key]=(ident,g.child_id)
         deleted=tuple(g for state,g in complete if state=='DELETED')
         if len(generations)>=2:kind='overlap'
-        elif len(ikes)==1 and ikes[0][0]=='ESTABLISHED' and len(records)==1 and complete and complete[0][0]=='INSTALLED':kind='unique'
+        elif len(ikes)==1 and ikes[0][0]=='ESTABLISHED' and len(records)==1 and complete and complete[0][0]=='INSTALLED' and scope_ready:kind='unique'
         else:kind='pending'
         snapshot=Snapshot(kind,generations,deleted=deleted)
         checked_snapshot(snapshot)

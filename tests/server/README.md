@@ -68,3 +68,9 @@ read failures, residual states, deferred A rejoining, once-per-tick scoped
 retries and recovery. Rule/table changes, delete failures, ownership changes,
 and malformed receipts must remain visible. The existing residual-state test
 now requires a truthful deferred receipt instead of a false cleanup success.
+
+`test_selector_readiness.py` keeps a device with a bounded, nonmatching local
+selector list pending/overlapping while its healthy peer remains active. It
+retains every CHILD and its original state, rejects other invalid fields and
+cross-device ownership collisions, and verifies normal multi-read readmission.
+Malformed/oversized lists and unauthorized native selectors still fail closed.
