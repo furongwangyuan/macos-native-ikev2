@@ -1,0 +1,316 @@
+{
+  "version": 1,
+  "sequence": [
+    0,
+    0,
+    0,
+    1,
+    2,
+    2,
+    2,
+    2,
+    3,
+    3,
+    3,
+    3
+  ],
+  "events": [
+    {
+      "family-vpn-device01": {
+        "uniqueid": "1",
+        "version": "2",
+        "state": "ESTABLISHED",
+        "local-host": "2001:4860:1234:5678::8",
+        "local-port": "4500",
+        "local-id": "vpn.family.home.arpa",
+        "remote-host": "2001:4860:abcd::101",
+        "remote-port": "45000",
+        "remote-id": "device01.family.home.arpa",
+        "initiator-spi": "1000000000000001",
+        "responder-spi": "2000000000000001",
+        "nat-fake": "yes",
+        "nat-any": "yes",
+        "encr-alg": "AES_GCM_16",
+        "encr-keysize": "256",
+        "prf-alg": "PRF_HMAC_SHA2_256",
+        "dh-group": "ECP_256",
+        "established": "60",
+        "rekey-time": "3000",
+        "remote-vips": [
+          "10.77.26.10",
+          "fd6d:fe83:ab27:2600::10"
+        ],
+        "child-sas": {
+          "internet-1": {
+            "name": "internet",
+            "uniqueid": "1",
+            "reqid": "1",
+            "state": "INSTALLED",
+            "mode": "TUNNEL",
+            "protocol": "ESP",
+            "encap": "yes",
+            "spi-in": "10000001",
+            "spi-out": "20000001",
+            "encr-alg": "AES_GCM_16",
+            "encr-keysize": "256",
+            "bytes-in": "100",
+            "packets-in": "10",
+            "use-in": "0",
+            "bytes-out": "200",
+            "packets-out": "20",
+            "use-out": "0",
+            "rekey-time": "3000",
+            "life-time": "3600",
+            "install-time": "20",
+            "local-ts": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "remote-ts": [
+              "10.77.26.10/32",
+              "fd6d:fe83:ab27:2600::10/128"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family-vpn-device01": {
+        "uniqueid": "1",
+        "version": "2",
+        "state": "ESTABLISHED",
+        "local-host": "2001:4860:1234:5678::8",
+        "local-port": "4500",
+        "local-id": "vpn.family.home.arpa",
+        "remote-host": "2001:4860:abcd::101",
+        "remote-port": "45000",
+        "remote-id": "device01.family.home.arpa",
+        "initiator-spi": "1000000000000001",
+        "responder-spi": "2000000000000001",
+        "nat-fake": "yes",
+        "nat-any": "yes",
+        "encr-alg": "AES_GCM_16",
+        "encr-keysize": "256",
+        "prf-alg": "PRF_HMAC_SHA2_256",
+        "dh-group": "ECP_256",
+        "established": "60",
+        "rekey-time": "3000",
+        "remote-vips": [
+          "10.77.26.10",
+          "fd6d:fe83:ab27:2600::10"
+        ],
+        "child-sas": {
+          "internet-1": {
+            "name": "internet",
+            "uniqueid": "1",
+            "reqid": "1",
+            "state": "DELETED",
+            "mode": "TUNNEL",
+            "protocol": "ESP",
+            "encap": "yes",
+            "spi-in": "10000001",
+            "spi-out": "20000001",
+            "encr-alg": "AES_GCM_16",
+            "encr-keysize": "256",
+            "bytes-in": "100",
+            "packets-in": "10",
+            "use-in": "0",
+            "bytes-out": "200",
+            "packets-out": "20",
+            "use-out": "0",
+            "rekey-time": "3000",
+            "life-time": "3600",
+            "install-time": "20",
+            "local-ts": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "remote-ts": [
+              "10.77.26.10/32",
+              "fd6d:fe83:ab27:2600::10/128"
+            ]
+          },
+          "internet-3": {
+            "name": "internet",
+            "uniqueid": "3",
+            "reqid": "1",
+            "state": "INSTALLED",
+            "mode": "TUNNEL",
+            "protocol": "ESP",
+            "encap": "yes",
+            "spi-in": "10000003",
+            "spi-out": "20000003",
+            "encr-alg": "AES_GCM_16",
+            "encr-keysize": "256",
+            "dh-group": "ECP_256",
+            "bytes-in": "100",
+            "packets-in": "10",
+            "bytes-out": "200",
+            "packets-out": "20",
+            "rekey-time": "3000",
+            "life-time": "3600",
+            "install-time": "20",
+            "local-ts": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "remote-ts": [
+              "10.77.26.10/32",
+              "fd6d:fe83:ab27:2600::10/128"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family-vpn-device01": {
+        "uniqueid": "1",
+        "version": "2",
+        "state": "ESTABLISHED",
+        "local-host": "2001:4860:1234:5678::8",
+        "local-port": "4500",
+        "local-id": "vpn.family.home.arpa",
+        "remote-host": "2001:4860:abcd::101",
+        "remote-port": "45000",
+        "remote-id": "device01.family.home.arpa",
+        "initiator-spi": "1000000000000001",
+        "responder-spi": "2000000000000001",
+        "nat-fake": "yes",
+        "nat-any": "yes",
+        "encr-alg": "AES_GCM_16",
+        "encr-keysize": "256",
+        "prf-alg": "PRF_HMAC_SHA2_256",
+        "dh-group": "ECP_256",
+        "established": "60",
+        "rekey-time": "3000",
+        "remote-vips": [
+          "10.77.26.10",
+          "fd6d:fe83:ab27:2600::10"
+        ],
+        "child-sas": {
+          "internet-1": {
+            "name": "internet",
+            "uniqueid": "1",
+            "reqid": "1",
+            "state": "DELETED",
+            "mode": "TUNNEL",
+            "protocol": "ESP",
+            "encap": "yes",
+            "spi-in": "10000001",
+            "spi-out": "20000001",
+            "encr-alg": "AES_GCM_16",
+            "encr-keysize": "256",
+            "bytes-in": "100",
+            "packets-in": "10",
+            "use-in": "0",
+            "bytes-out": "200",
+            "packets-out": "20",
+            "use-out": "0",
+            "rekey-time": "3000",
+            "life-time": "3600",
+            "install-time": "20",
+            "local-ts": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "remote-ts": [
+              "10.77.26.10/32",
+              "fd6d:fe83:ab27:2600::10/128"
+            ]
+          },
+          "internet-3": {
+            "name": "internet",
+            "uniqueid": "3",
+            "reqid": "1",
+            "state": "INSTALLED",
+            "mode": "TUNNEL",
+            "protocol": "ESP",
+            "encap": "yes",
+            "spi-in": "10000003",
+            "spi-out": "20000003",
+            "encr-alg": "AES_GCM_16",
+            "encr-keysize": "256",
+            "dh-group": "ECP_256",
+            "bytes-in": "100",
+            "packets-in": "10",
+            "use-in": "0",
+            "bytes-out": "200",
+            "packets-out": "20",
+            "use-out": "0",
+            "rekey-time": "3000",
+            "life-time": "3600",
+            "install-time": "20",
+            "local-ts": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "remote-ts": [
+              "10.77.26.10/32",
+              "fd6d:fe83:ab27:2600::10/128"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family-vpn-device01": {
+        "uniqueid": "1",
+        "version": "2",
+        "state": "ESTABLISHED",
+        "local-host": "2001:4860:1234:5678::8",
+        "local-port": "4500",
+        "local-id": "vpn.family.home.arpa",
+        "remote-host": "2001:4860:abcd::101",
+        "remote-port": "45000",
+        "remote-id": "device01.family.home.arpa",
+        "initiator-spi": "1000000000000001",
+        "responder-spi": "2000000000000001",
+        "nat-fake": "yes",
+        "nat-any": "yes",
+        "encr-alg": "AES_GCM_16",
+        "encr-keysize": "256",
+        "prf-alg": "PRF_HMAC_SHA2_256",
+        "dh-group": "ECP_256",
+        "established": "60",
+        "rekey-time": "3000",
+        "remote-vips": [
+          "10.77.26.10",
+          "fd6d:fe83:ab27:2600::10"
+        ],
+        "child-sas": {
+          "internet-3": {
+            "name": "internet",
+            "uniqueid": "3",
+            "reqid": "1",
+            "state": "INSTALLED",
+            "mode": "TUNNEL",
+            "protocol": "ESP",
+            "encap": "yes",
+            "spi-in": "10000003",
+            "spi-out": "20000003",
+            "encr-alg": "AES_GCM_16",
+            "encr-keysize": "256",
+            "dh-group": "ECP_256",
+            "bytes-in": "100",
+            "packets-in": "10",
+            "use-in": "0",
+            "bytes-out": "200",
+            "packets-out": "20",
+            "use-out": "0",
+            "rekey-time": "3000",
+            "life-time": "3600",
+            "install-time": "20",
+            "local-ts": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "remote-ts": [
+              "10.77.26.10/32",
+              "fd6d:fe83:ab27:2600::10/128"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

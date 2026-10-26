@@ -57,6 +57,9 @@ class Snapshot:
     # Compatibility-only annotation; never grants readiness or provenance.
     # New parser outputs leave this empty.
     installed: tuple = ()
+    # Closed, fully checked facts only; never admission without a current proof.
+    # Exactly (DELETED old, INSTALLED new), with every sibling full-scope.
+    rekey_pair: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -222,6 +225,35 @@ def checked_snapshot(snapshot):
             or any(g not in snapshot.generations or g in snapshot.deleted for g in snapshot.installed)
             or (snapshot.installed and snapshot.kind!='overlap')):
         raise Fault('invalid compatibility installed annotation')
+    pair=snapshot.rekey_pair
+    if (type(pair) is not tuple or len(pair) not in (0,2)
+            or (pair and (snapshot.kind!='overlap' or len(snapshot.generations)!=2
+                or set(pair)!=set(snapshot.generations) or snapshot.deleted!=(pair[0],)
+                or not same_child_authority(pair[0],pair[1])))):
+        raise Fault('invalid complete rekey annotation')
+
+
+def same_child_authority(old,new):
+    """A CHILD replacement changes only its ID and both SPIs, never authority."""
+    if type(old) is not Generation or type(new) is not Generation:return False
+    changed=('child_id','spi_in','spi_out')
+    return (all(getattr(old,k)==getattr(new,k) for k in Generation.__dataclass_fields__ if k not in changed)
+            and all(getattr(old,k)!=getattr(new,k) for k in changed))
+
+
+def continuation_target(snapshot,current):
+    checked_snapshot(snapshot)
+    if snapshot.kind=='unique':
+        target=snapshot.generations[0]
+        return target if target==current or same_child_authority(current,target) else None
+    if snapshot.rekey_pair and current in snapshot.rekey_pair:return snapshot.rekey_pair[1]
+    return None
+
+
+def same_device_authority(old,new):
+    return (type(old) is DeviceProof and type(new) is DeviceProof and old.ready is True and new.ready is True
+            and old.device_id==new.device_id and old.hosts==new.hosts and old.policy_ids==new.policy_ids
+            and (old.generation==new.generation or same_child_authority(old.generation,new.generation)))
 
 
 def host_matches(r,g):
@@ -251,18 +283,31 @@ def host_request_reqid(record,outer_endpoints=endpoints.IPV4):
     return int(match[3])
 
 
-def audit(registry,snapshots,records,active,owned_native,remembered=None,handovers=None,outer_endpoints=endpoints.IPV4):
+def audit(registry,snapshots,records,active,owned_native,remembered=None,handovers=None,outer_endpoints=endpoints.IPV4,continuing=None):
     """Return independent device readiness after validating the entire inventory.
 
     Exact remembered keys come only from a previous complete inventory audit,
     including closed exclusive-selector scope during installation/teardown.
     These keys never activate a device. This function does not grant deletion
-    ownership or select a winner
-    among overlapping CHILD/IKE generations.
+    ownership. Cold overlapping CHILD/IKE generations stay closed. The optional
+    continuing input must be the adapter's actual published active proof; only
+    its completely checked retirement pair may carry the same permission.
     """
     outer_endpoints=endpoints.normalize(outer_endpoints)
     registry=normalize(registry)
     devices={d['device_id']:d for d in registry['devices']}
+    continuing={} if continuing is None else continuing
+    if (type(continuing) is not dict or not set(continuing)<=set(devices)
+            or any(type(d) is not DeviceProof or d.ready is not True or d.device_id!=i for i,d in continuing.items())):
+        raise Fault('invalid active continuity provenance')
+    for ident,d in continuing.items():
+        checked_generation(d.generation,devices[ident],outer_endpoints)
+        hosts=[record_from_key(k) for k in d.hosts]
+        if (len(hosts)!=4 or d.hosts!=tuple(sorted(d.hosts))
+                or d.policy_ids!=tuple(sorted(r['id'] for r in hosts))
+                or len({(r['direction'],r['src'],r['dst']) for r in hosts})!=4
+                or not all(host_matches(r,d.generation) for r in hosts)):
+            raise Fault('incomplete active continuity proof')
     if type(snapshots) is not dict or set(snapshots)!=set(devices):raise Fault('incomplete fleet snapshot')
     remembered={} if remembered is None else remembered
     if type(remembered) is not dict or not set(remembered)<=set(devices):raise Fault('unknown remembered device')
@@ -396,8 +441,14 @@ def audit(registry,snapshots,records,active,owned_native,remembered=None,handove
     for ident in sorted(devices):
         snapshot=snapshots[ident]; hosts=assigned[ident]
         g=snapshot.generations[0] if snapshot.kind=='unique' else None
+        previous=continuing.get(ident)
+        if g is None and previous is not None:
+            g=continuation_target(snapshot,previous.generation)
         ready=bool(ident not in blocked and devices[ident]['state']=='enabled' and g is not None and len(hosts)==4
             and all(active[r['id']] and host_matches(r,g) for r in hosts))
+        if snapshot.kind!='unique' and ready:
+            ready=(tuple(sorted(record_key(r) for r in hosts))==previous.hosts
+                   and tuple(sorted(r['id'] for r in hosts))==previous.policy_ids)
         result.append(DeviceProof(ident,ready,g,tuple(sorted(record_key(r) for r in hosts)),
                                   tuple(sorted(r['id'] for r in hosts)) if ready else ()))
     proof=FleetProof(registry_digest(registry),native,tuple(result),outer_endpoints)

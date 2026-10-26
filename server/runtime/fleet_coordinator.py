@@ -13,6 +13,7 @@ from fleet_policy import (DeviceProof, FleetProof, Generation, Snapshot, Fault,
                           PolicyTransition, audit, native_keys, registry_digest, checked_snapshot, checked_generation, MAX_IKE_EVENTS)
 from fleet_vici import ParseResult
 from fleet_transport import TransientTransportFault
+from fleet_policy import continuation_target, same_device_authority
 
 
 @dataclass(frozen=True)
@@ -234,8 +235,10 @@ class FakeAdapter:
 class Coordinator:
     """Bounded three-observation tick with independently gated device state.
 
-    A changed active snapshot is narrowed immediately after observe, BEFORE SPD
-    inventory or route reads. The two preactivation frames must agree per device;
+    An unsupported changed snapshot narrows before SPD or route reads. Only an
+    exact same-authority CHILD continuation may retain an already open VIP set
+    while independently reading every proof again. Missing evidence never waits.
+    The two preactivation frames must agree per device;
     publication has a third postcheck that can only remove devices. Ordinary
     absence/overlap/readiness/route loss narrows only identified devices. Unknown
     inventory, native/context/registry changes or unsupported provenance stops
@@ -275,6 +278,22 @@ class Coordinator:
         self.failure = None
         self.transient_pauses = 0
         self.pending_retirements = {}
+        self.continuities = {}  # at most 16 devices: fixed (published old, exact new)
+
+    def _continuation(self, ident, snapshot, current):
+        if ident in self.pending_retirements or ident in self.handovers:return None
+        previous = self.continuities.get(ident)
+        if previous is not None:
+            old, new = previous
+            if current not in (old,new):return None
+            target = continuation_target(snapshot, old)
+            if target != new or (snapshot.rekey_pair and snapshot.rekey_pair != (old,new)):return None
+            return new
+        target = continuation_target(snapshot, current)
+        if target is None or target == current:return target
+        if snapshot.rekey_pair and snapshot.rekey_pair[0] != current:return None
+        self.continuities[ident] = (current,target)
+        return target
 
     def _retirement_receipt(self, remaining, requests, receipt):
         if (type(receipt)is not NarrowReceipt or receipt.remaining!=remaining
@@ -299,6 +318,7 @@ class Coordinator:
         identifiers = set(identifiers) & set(self.active)
         if not identifiers:
             return
+        for ident in identifiers:self.continuities.pop(ident,None)
         expected = _ordered(self.active.values())
         remaining = _ordered(d for i, d in self.active.items() if i not in identifiers)
         requests = tuple(_request(self.active[i]) for i in sorted(identifiers))
@@ -313,6 +333,7 @@ class Coordinator:
             pass
         # Empty is the requested set, not a claim that failed closure succeeded.
         self.active = {}
+        self.continuities.clear()
         self.state = 'STOPPED'
         self.last_result = Result('STOPPED', (), self.pending_count, reason, confirmed)
         return self.last_result
@@ -348,8 +369,11 @@ class Coordinator:
         if any(type(s) is not Snapshot for s in parsed.snapshots.values()):
             raise Fault('unknown normalized snapshot')
         self.pending_count = parsed.unattributed_pending_count
-        changed = [i for i, d in self.active.items()
-                   if parsed.snapshots[i] != Snapshot('unique', (d.generation,))]
+        changed = []
+        for i,d in self.active.items():
+            snapshot=parsed.snapshots[i]
+            if snapshot==Snapshot('unique',(d.generation,)) and i not in self.continuities:continue
+            if self._continuation(i,snapshot,d.generation) is None:changed.append(i)
         self._narrow(changed, 'observed generation transition')
         visible_ikes = set()
         for ident, snapshot in parsed.snapshots.items():
@@ -468,6 +492,7 @@ class Coordinator:
             raise Fault('fleet_transition_guard_unverified')
         self.active = {}
         self.pending_retirements.clear()
+        self.continuities.clear()
         self.state = 'GUARDED'
         # A MOBIKE update briefly uses outbound DROP policies and can reinstall
         # old SPD entries with new IDs before its replacement CHILD is ready.
@@ -517,7 +542,8 @@ class Coordinator:
         records, activity, native = self.adapter.inventory()
         try:
             proof = audit(self.registry, view.parsed.snapshots, records, activity, native,
-                          remembered=self._remembered(), handovers=self._handover_history(),outer_endpoints=self.outer_endpoints)
+                          remembered=self._remembered(), handovers=self._handover_history(),outer_endpoints=self.outer_endpoints,
+                          continuing={i:d for i,d in self.active.items() if i in self.continuities})
         except PolicyTransition:
             self._recheck_transition(view, native_keys(native))
             return None
@@ -527,7 +553,8 @@ class Coordinator:
             raise Fault('native floor ownership changed')
         self.audited_hosts = {d.device_id: d.hosts for d in proof.devices}
         byid = {d.device_id: d for d in proof.devices}
-        self._narrow([i for i, d in self.active.items() if byid.get(i) != d],
+        self._narrow([i for i, d in self.active.items() if byid.get(i) != d
+                     and not (i in self.continuities and same_device_authority(d,byid.get(i)))],
                      'device policy proof changed')
         eligible, routes = {}, {}
         for ident in sorted(byid):
@@ -540,17 +567,23 @@ class Coordinator:
             valid, evidence = self._route_valid(d)
             if not valid:
                 self._narrow([ident], 'device exact route proof unavailable')
-            else:
+            elif ident not in self.pending_retirements:
                 if ident not in self.active:
                     self.guarded_proofs[ident] = d
                 eligible[ident] = d
                 routes[ident] = evidence
         return view, proof, eligible, routes
 
-    @staticmethod
-    def _same_device(ident, first, second):
+    def _same_device(self, ident, first, second):
+        same_snapshot=first[0].parsed.snapshots[ident] == second[0].parsed.snapshots[ident]
+        transition=self.continuities.get(ident)
+        if transition is None and any(frame[0].parsed.snapshots[ident].kind!='unique' for frame in (first,second)):
+            return False
+        if transition is not None:
+            old,new=transition
+            same_snapshot=all(continuation_target(frame[0].parsed.snapshots[ident],old)==new for frame in (first,second))
         return (ident in first[2] and ident in second[2]
-                and first[0].parsed.snapshots[ident] == second[0].parsed.snapshots[ident]
+                and same_snapshot
                 and first[2][ident] == second[2][ident] and first[3][ident] == second[3][ident])
 
     def step(self):
@@ -580,6 +613,17 @@ class Coordinator:
                 second = self._round()
                 if second is None:
                     return self.last_result
+                # If replacement first appeared in read two, one bounded extra
+                # complete read supplies its second proof. Never publish from
+                # one read or keep a device missing any complete evidence.
+                crossing=[i for i in self.active if i in self.continuities
+                          and i in first[2] and i in second[2]
+                          and first[2][i] != second[2][i]
+                          and same_device_authority(first[2][i],second[2][i])]
+                if crossing:
+                    first=second
+                    second=self._round()
+                    if second is None:return self.last_result
                 stable = {i: d for i, d in second[2].items() if self._same_device(i, first, second)}
                 # Route evidence itself must be consistent, even if each individual
                 # read was structurally valid. Do not retain by mere device name.
@@ -603,6 +647,8 @@ class Coordinator:
             self._narrow(changed, 'postcheck changed; no new activation permitted')
             for ident, device in self.active.items():
                 self.last_verified[ident] = device
+                if post[0].parsed.snapshots[ident]==Snapshot('unique',(device.generation,)):
+                    self.continuities.pop(ident,None)
             self.guarded_proofs = {d.device_id: d for d in post[1].devices
                 if d.device_id in self.guarded_proofs and d.device_id not in self.active and d.hosts}
             self.state = 'ACTIVE' if self.active else 'GUARDED'
@@ -624,6 +670,7 @@ class Coordinator:
                 except Exception:closed=False
                 if closed:
                     self.active={};self.pending_retirements.clear()
+                    self.continuities.clear()
                     self.state='GUARDED';self.transient_pauses+=1
                     self.last_result=Result('GUARDED',(),self.pending_count,
                                             'fleet_transient_observation',True)
