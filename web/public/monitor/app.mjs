@@ -121,7 +121,9 @@ document.addEventListener('visibilitychange',()=>{
 render();refresh();refreshHistory();
 setInterval(()=>{
   if(document.hidden)return;
-  render();refresh();
+  // Successful polls render once on completion. While a request is pending
+  // (or polling disabled), keep aging the retained snapshot every second.
+  if(state.busy||!state.allowed)render();else refresh();
   if(state.historyDay!==malaysiaDay())refreshHistory();
 },POLL_MS);
 setInterval(()=>{if(!document.hidden)refreshHistory();},HISTORY_POLL_MS);
