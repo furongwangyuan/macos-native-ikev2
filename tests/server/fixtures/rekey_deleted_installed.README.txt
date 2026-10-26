@@ -1,0 +1,7 @@
+Synthetic CHILD rekey metadata fixture
+
+Four deduplicated event shapes and a twelve-frame sequence preserve a sequence of unique old INSTALLED, exactly two siblings (old DELETED and new INSTALLED), and unique new INSTALLED. All identities, IKE/CHILD identifiers, SPIs, outer and virtual addresses, ports, counters and times are synthetic. Only the field structure and lifecycle state sequence model an observed transition. Values use the existing test registry and outer_fixture constants; the invented globally classified IPv6 literals are needed by the real validator and are never contacted.
+
+This is not a raw capture, proof of a reproduced original failure, or a production endpoint. There are no private source paths, wall-clock event times, certificates, credentials, private keys or packet bodies. The test reads only this local fixture and mocked adapters.
+
+The new INSTALLED sibling initially has no use-in/use-out fields; later frames include them. Both field shapes are retained. No wall-clock or counter values are needed to reproduce the lifecycle sequence.

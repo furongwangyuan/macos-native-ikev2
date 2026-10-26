@@ -277,7 +277,17 @@ def parse_events(events,registry,outer_endpoints=endpoints.IPV4):
         if len(generations)>=2:kind='overlap'
         elif len(ikes)==1 and ikes[0][0]=='ESTABLISHED' and len(records)==1 and complete and complete[0][0]=='INSTALLED' and scope_ready:kind='unique'
         else:kind='pending'
-        snapshot=Snapshot(kind,generations,deleted=deleted)
+        pair=()
+        # Keep the real overlap and every checked sibling; this annotation alone
+        # grants no cold admission. Only the exact observed retirement shape.
+        if (kind=='overlap' and len(ikes)==1 and ikes[0][0]=='ESTABLISHED'
+                and len(records)==2 and len(complete)==2 and scope_ready
+                and sorted(state for state,_g in complete)==['DELETED','INSTALLED']):
+            old=next(g for state,g in complete if state=='DELETED')
+            new=next(g for state,g in complete if state=='INSTALLED')
+            from fleet_policy import same_child_authority
+            if same_child_authority(old,new):pair=(old,new)
+        snapshot=Snapshot(kind,generations,deleted=deleted,rekey_pair=pair)
         checked_snapshot(snapshot)
         snapshots[ident]=snapshot
     return ParseResult(snapshots,pending)

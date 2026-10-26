@@ -310,8 +310,13 @@ class NativeFleetAdapter:
         with runtime.budget(25):
             policy.validate_proof(proof,self.owner.session['fleet']['registry'],session.endpoints(self.owner.session['fleet']))
             byid={d.device_id:d for d in proof.devices if d.ready}
-            if any(byid.get(d.device_id)!=d for d in proposed) or any(d not in proposed for d in expected):
+            after={d.device_id:d for d in proposed}
+            if (any(byid.get(d.device_id)!=d for d in proposed)
+                    or any(not policy.same_device_authority(d,after.get(d.device_id)) for d in expected)):
                 raise s.Refused('fleet_publish_not_current_superset')
+            closing=self.owner.session.get('fleet_closing',{})
+            if closing.get('phase')=='intent' and set(closing.get('devices',())) & set(after):
+                raise s.Refused('fleet_publish_retirement_unfinished')
             self.gate.replace(expected,proposed)
             return proposed
     def guard_all(self,_reason):
